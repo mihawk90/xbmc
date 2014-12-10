@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2010-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -233,7 +233,7 @@ unsigned int CRingBuffer::getSize()
   return m_size;
 }
 
-unsigned int CRingBuffer::getReadPtr()
+unsigned int CRingBuffer::getReadPtr() const
 {
   return m_readPtr;
 }

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -83,6 +83,8 @@ class CGUIKeyboard : public ITimerCallback
       if (m_idleTimer.IsRunning()) 
         m_idleTimer.Restart();
     }
+
+    virtual bool SetTextToKeyboard(const std::string &text, bool closeKeyboard = false) { return false; }
     
   private:
     CTimer m_idleTimer;

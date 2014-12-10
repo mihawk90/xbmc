@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
 #include "PackageManager.h"
 #include "Intent.h"
 #include "Drawable.h"
@@ -30,27 +31,43 @@ int CJNIPackageManager::GET_ACTIVITIES(0);
 
 void CJNIPackageManager::PopulateStaticFields()
 {
-  jhclass clazz = find_class("android/content/pm/PackageManager");
+  jhclass clazz  = find_class("android/content/pm/PackageManager");
   GET_ACTIVITIES = (get_static_field<int>(clazz, "GET_ACTIVITIES"));
 }
 
 CJNIIntent CJNIPackageManager::getLaunchIntentForPackage(const std::string &package)
 {
-  return (CJNIIntent)call_method<jhobject>(m_object, "getLaunchIntentForPackage", "(Ljava/lang/String;)Landroid/content/Intent;", jcast<jhstring>(package));
+  return call_method<jhobject>(m_object,
+    "getLaunchIntentForPackage", "(Ljava/lang/String;)Landroid/content/Intent;",
+    jcast<jhstring>(package));
+}
+
+CJNIIntent CJNIPackageManager::getLeanbackLaunchIntentForPackage(const std::string &package)
+{
+  // API 21
+  return call_method<jhobject>(m_object,
+    "getLeanbackLaunchIntentForPackage", "(Ljava/lang/String;)Landroid/content/Intent;",
+    jcast<jhstring>(package));
 }
 
 CJNIDrawable CJNIPackageManager::getApplicationIcon(const std::string &package)
 {
-  return (CJNIDrawable)call_method<jhobject>(m_object, "getApplicationIcon", "(Ljava/lang/String;)Landroid/graphics/drawable/Drawable;", jcast<jhstring>(package));
+  return call_method<jhobject>(m_object,
+    "getApplicationIcon", "(Ljava/lang/String;)Landroid/graphics/drawable/Drawable;",
+    jcast<jhstring>(package));
 }
 
 CJNICharSequence CJNIPackageManager::getApplicationLabel(const CJNIApplicationInfo &info)
 {
-  return (CJNICharSequence)call_method<jhobject>(m_object, "getApplicationLabel", "(Landroid/content/pm/ApplicationInfo;)Ljava/lang/CharSequence;", info.get_raw());
+  return call_method<jhobject>(m_object,
+    "getApplicationLabel", "(Landroid/content/pm/ApplicationInfo;)Ljava/lang/CharSequence;",
+    info.get_raw());
 }
 
 CJNIList<CJNIApplicationInfo> CJNIPackageManager::getInstalledApplications(int flags)
 {
-  return (CJNIList<CJNIApplicationInfo>)call_method<jhobject>(m_object, "getInstalledApplications", "(I)Ljava/util/List;", flags);
+  return call_method<jhobject>(m_object,
+    "getInstalledApplications", "(I)Ljava/util/List;",
+    flags);
 }
 

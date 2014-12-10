@@ -1,27 +1,29 @@
 #pragma once
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
- *  This program is free software; you can redistribute it and/or modify
+ *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
  *
- *  This program is distributed in the hope that it will be useful,
+ *  This Program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include <string>
 
 typedef struct Translator Translator;
+
+class CURL;
 
 /*!
  \brief Translates old internal paths into new ones
@@ -39,6 +41,7 @@ public:
    \param legacyPath Path in the old videodb:// format using numbers
    \return Path in the new videodb:// format using descriptive strings
    */
+  static std::string TranslateVideoDbPath(const CURL &legacyPath);
   static std::string TranslateVideoDbPath(const std::string &legacyPath);
 
   /*!
@@ -47,6 +50,7 @@ public:
    \param legacyPath Path in the old musicdb:// format using numbers
    \return Path in the new musicdb:// format using descriptive strings
    */
+  static std::string TranslateMusicDbPath(const CURL &legacyPath);
   static std::string TranslateMusicDbPath(const std::string &legacyPath);
 
 private:

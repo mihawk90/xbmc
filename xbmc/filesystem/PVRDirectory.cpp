@@ -1,8 +1,8 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
- * This Program is free software; you can redistribute it and/or modify
+ *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2, or (at your option)
  *  any later version.
@@ -44,22 +44,17 @@ CPVRDirectory::~CPVRDirectory()
 {
 }
 
-bool CPVRDirectory::Exists(const char* strPath)
+bool CPVRDirectory::Exists(const CURL& url)
 {
-  CStdString directory(strPath);
-  if (directory.substr(0,17) == "pvr://recordings/")
-    return true;
-  else
-    return false;
+  return (url.IsProtocol("pvr") && url.GetHostName() == "recordings");
 }
 
-bool CPVRDirectory::GetDirectory(const CStdString& strPath, CFileItemList &items)
+bool CPVRDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 {
-  CStdString base(strPath);
+  std::string base(url.Get());
   URIUtils::RemoveSlashAtEnd(base);
 
-  CURL url(strPath);
-  CStdString fileName = url.GetFileName();
+  std::string fileName = url.GetFileName();
   URIUtils::RemoveSlashAtEnd(fileName);
   CLog::Log(LOGDEBUG, "CPVRDirectory::GetDirectory(%s)", base.c_str());
   items.SetCacheToDisc(CFileItemList::CACHE_NEVER);
@@ -71,59 +66,52 @@ bool CPVRDirectory::GetDirectory(const CStdString& strPath, CFileItemList &items
   {
     CFileItemPtr item;
 
-    item.reset(new CFileItem(base + "/channels/", true));
+    item.reset(new CFileItem(base + "channels/", true));
     item->SetLabel(g_localizeStrings.Get(19019));
     item->SetLabelPreformated(true);
     items.Add(item);
 
-    item.reset(new CFileItem(base + "/recordings/", true));
+    item.reset(new CFileItem(base + "recordings/", true));
     item->SetLabel(g_localizeStrings.Get(19017));
     item->SetLabelPreformated(true);
     items.Add(item);
 
-    item.reset(new CFileItem(base + "/timers/", true));
-    item->SetLabel(g_localizeStrings.Get(19040));
-    item->SetLabelPreformated(true);
-    items.Add(item);
-
-    item.reset(new CFileItem(base + "/guide/", true));
-    item->SetLabel(g_localizeStrings.Get(19029));
-    item->SetLabelPreformated(true);
-    items.Add(item);
-
     // Sort by name only. Labels are preformated.
-    items.AddSortMethod(SORT_METHOD_LABEL, 551 /* Name */, LABEL_MASKS("%L", "", "%L", ""));
+    items.AddSortMethod(SortByLabel, 551 /* Name */, LABEL_MASKS("%L", "", "%L", ""));
 
     return true;
   }
-  else if (fileName.Left(10) == "recordings")
+  else if (StringUtils::StartsWith(fileName, "recordings"))
   {
-    return g_PVRRecordings->GetDirectory(strPath, items);
+    const std::string pathToUrl(url.Get());
+    return g_PVRRecordings->GetDirectory(pathToUrl, items);
   }
-  else if (fileName.Left(8) == "channels")
+  else if (StringUtils::StartsWith(fileName, "channels"))
   {
-    return g_PVRChannelGroups->GetDirectory(strPath, items);
+    const std::string pathToUrl(url.Get());
+    return g_PVRChannelGroups->GetDirectory(pathToUrl, items);
   }
-  else if (fileName.Left(6) == "timers")
+  else if (StringUtils::StartsWith(fileName, "timers"))
   {
-    return g_PVRTimers->GetDirectory(strPath, items);
+    const std::string pathToUrl(url.Get());
+    return g_PVRTimers->GetDirectory(pathToUrl, items);
   }
 
   return false;
 }
 
-bool CPVRDirectory::SupportsWriteFileOperations(const CStdString& strPath)
+bool CPVRDirectory::SupportsWriteFileOperations(const std::string& strPath)
 {
   CURL url(strPath);
-  CStdString filename = url.GetFileName();
+  std::string filename = url.GetFileName();
 
   return URIUtils::IsPVRRecording(filename);
 }
 
-bool CPVRDirectory::IsLiveTV(const CStdString& strPath)
+bool CPVRDirectory::IsLiveTV(const std::string& strPath)
 {
   CURL url(strPath);
-  CStdString filename = url.GetFileName();
+  std::string filename = url.GetFileName();
 
   return URIUtils::IsLiveTV(filename);
 }

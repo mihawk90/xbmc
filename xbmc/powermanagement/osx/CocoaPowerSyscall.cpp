@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -226,7 +226,7 @@ bool CCocoaPowerSyscall::HasBattery(void)
 
 int CCocoaPowerSyscall::BatteryLevel(void)
 {
-  return DarwinBatteryLevel();
+  return CDarwinUtils::BatteryLevel();
 }
 
 bool CCocoaPowerSyscall::PumpPowerEvents(IPowerEventsCallback *callback)

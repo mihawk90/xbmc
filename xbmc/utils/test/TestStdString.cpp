@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,34 +47,4 @@ TEST(TestStdString, CStdStringW)
   ref = L"CStdStringW test";
   var = ref;
   EXPECT_STREQ(ref.c_str(), var.c_str());
-}
-
-TEST(TestStdString, CStdString16)
-{
-  CStdString16 ref, var;
-
-  ref = (uint16_t*)"CStdString16 test";
-  var = ref;
-  EXPECT_TRUE(!memcmp(ref.c_str(), var.c_str(),
-                      ref.length() * sizeof(uint16_t)));
-}
-
-TEST(TestStdString, CStdString32)
-{
-  CStdString32 ref, var;
-
-  ref = (uint32_t*)"CStdString32 test";
-  var = ref;
-  EXPECT_TRUE(!memcmp(ref.c_str(), var.c_str(),
-                      ref.length() * sizeof(uint32_t)));
-}
-
-TEST(TestStdString, CStdStringO)
-{
-  CStdStringO ref, var;
-
-  ref = "CStdString32 test";
-  var = ref;
-  EXPECT_TRUE(!memcmp(ref.c_str(), var.c_str(),
-                      ref.length() * sizeof(OLECHAR)));
 }

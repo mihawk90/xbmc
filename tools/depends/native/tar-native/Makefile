@@ -20,13 +20,12 @@ APPBIN=$(PREFIX)/bin/tar
 all: .installed-$(PLATFORM)
 
 $(TARBALLS_LOCATION)/$(ARCHIVE):
-	$(RETRIEVE_TOOL) $(RETRIEVE_TOOL_FLAGS) $(BASE_URL)/$(ARCHIVE)
+	cd $(TARBALLS_LOCATION); $(RETRIEVE_TOOL) $(RETRIEVE_TOOL_FLAGS) $(BASE_URL)/$(ARCHIVE)
 
 $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE) $(DEPS)
 	-rm -rf $(PLATFORM)/*; mkdir -p $(PLATFORM)
 	cd $(PLATFORM); $(ARCHIVE_TOOL) $(ARCHIVE_TOOL_FLAGS) $(TARBALLS_LOCATION)/$(ARCHIVE)
 	cd $(PLATFORM); $(CONFIGURE)
-	touch $@
 
 $(APP): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM)
@@ -35,6 +34,7 @@ $(APP): $(PLATFORM)
 	$(MAKE) -C $(PLATFORM) install
 	rm -f $(PREFIX)/bin/tar $(PREFIX)/bin/gnutar
 	cd $(PREFIX)/bin; ln -s gtar tar; ln -s gtar gnutar
+	touch $@
 
 clean:
 	$(MAKE) -C $(PLATFORM) clean

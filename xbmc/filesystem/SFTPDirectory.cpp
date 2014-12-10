@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,18 +33,14 @@ CSFTPDirectory::~CSFTPDirectory(void)
 {
 }
 
-bool CSFTPDirectory::GetDirectory(const CStdString& strPath, CFileItemList &items)
+bool CSFTPDirectory::GetDirectory(const CURL& url, CFileItemList &items)
 {
-  CURL url(strPath);
-
   CSFTPSessionPtr session = CSFTPSessionManager::CreateSession(url);
   return session->GetDirectory(url.GetWithoutFilename().c_str(), url.GetFileName().c_str(), items);
 }
 
-bool CSFTPDirectory::Exists(const char* strPath)
+bool CSFTPDirectory::Exists(const CURL& url)
 {
-  CURL url(strPath);
-
   CSFTPSessionPtr session = CSFTPSessionManager::CreateSession(url);
   if (session)
     return session->DirectoryExists(url.GetFileName().c_str());

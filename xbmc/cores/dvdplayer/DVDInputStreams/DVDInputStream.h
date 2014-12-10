@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,6 +48,11 @@ enum DVDStreamType
 
 #define DVDSTREAM_BLOCK_SIZE_FILE (2048 * 16)
 #define DVDSTREAM_BLOCK_SIZE_DVD  2048
+
+namespace XFILE
+{
+  class CFile;
+}
 
 namespace PVR
 {
@@ -118,6 +123,7 @@ public:
     virtual void OnPrevious() = 0;
     virtual bool OnMouseMove(const CPoint &point) = 0;
     virtual bool OnMouseClick(const CPoint &point) = 0;
+    virtual bool HasMenu() = 0;
     virtual bool IsInMenu() = 0;
     virtual void SkipStill() = 0;
     virtual double GetTimeStampCorrection() = 0;

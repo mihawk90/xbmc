@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -212,9 +212,9 @@ int CoffLoader::LoadCoffHModule(FILE *fp)
 #ifdef TARGET_POSIX
   hModule = malloc(tempWindowsHeader.SizeOfImage);
 #else
-  hModule = VirtualAllocEx(0, (PVOID)tempWindowsHeader.ImageBase, tempWindowsHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+  hModule = VirtualAllocEx(GetCurrentProcess(), (PVOID)tempWindowsHeader.ImageBase, tempWindowsHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
   if (hModule == NULL)
-    hModule = VirtualAlloc(0, tempWindowsHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    hModule = VirtualAlloc(GetCurrentProcess(), tempWindowsHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 #endif
   if (hModule == NULL)
     return 0;   //memory allocation fails
@@ -814,7 +814,6 @@ void CoffLoader::PrintSection(SectionHeader_t *ScnHdr, char* data)
   if (ScnHdr->SizeOfRawData > 0)
   {
     unsigned int i;
-    char ch;
     // Print the Raw Data
 
     printf("\nRAW DATA");
@@ -822,7 +821,7 @@ void CoffLoader::PrintSection(SectionHeader_t *ScnHdr, char* data)
     {
       if ((i % 16) == 0)
         printf("\n  %08X: ", i);
-      ch = data[i];
+      char ch = data[i];
       printf("%02X ", (unsigned int)ch);
     }
     printf("\n\n");

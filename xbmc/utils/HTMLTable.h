@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,8 @@
  *
  */
 
-#include "StdString.h"
+#include <string>
+#include <vector>
 
 namespace HTML
 {
@@ -30,11 +31,11 @@ public:
   CHTMLRow(void);
   virtual ~CHTMLRow(void);
   int GetColumns() const;
-  const CStdString& GetColumValue(int iColumn) const;
-  void Parse(const CStdString& strTableRow);
+  const std::string& GetColumValue(int iColumn) const;
+  void Parse(const std::string& strTableRow);
 
 protected:
-  std::vector<CStdString> m_vecColums;
+  std::vector<std::string> m_vecColums;
 };
 
 class CHTMLTable
@@ -42,7 +43,7 @@ class CHTMLTable
 public:
   CHTMLTable(void);
   virtual ~CHTMLTable(void);
-  void Parse(const CStdString& strHTML);
+  void Parse(const std::string& strHTML);
   int GetRows() const;
   const CHTMLRow& GetRow(int iRow) const;
 protected:

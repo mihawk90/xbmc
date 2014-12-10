@@ -39,7 +39,7 @@ extern "C" {
 
 #include "cc_decoder.h"
 
-#define LOG_DEBUG 3
+//#undef LOG_DEBUG
 
 /* number of text colors specified by EIA-608 standard */
 #define NUM_FG_COL 7
@@ -94,9 +94,8 @@ static int parity(uint8_t byte)
 static void build_parity_table(void)
 {
   uint8_t byte;
-  int parity_v;
   for (byte = 0; byte <= 127; byte++) {
-    parity_v = parity(byte);
+    int parity_v = parity(byte);
     /* CC uses odd parity (i.e., # of 1's in byte is odd.) */
     parity_table[byte] = parity_v;
     parity_table[byte | 0x80] = !parity_v;
@@ -553,14 +552,12 @@ void decode_cc(cc_decoder_t *dec, uint8_t *buffer, uint32_t buf_len)
    */
   uint8_t *current = buffer;
   uint32_t curbytes = 0;
-  uint8_t data1, data2;
-  uint8_t cc_code;
   int odd_offset = 1;
 
   while (curbytes < buf_len) {
     int skip = 2;
 
-    cc_code = *current++;
+    uint8_t cc_code = *current++;
     curbytes++;
     
     if (buf_len - curbytes < 2) {
@@ -570,8 +567,8 @@ void decode_cc(cc_decoder_t *dec, uint8_t *buffer, uint32_t buf_len)
       break;
     }
     
-    data1 = *current;
-    data2 = *(current + 1);
+    uint8_t data1 = *current;
+    uint8_t data2 = *(current + 1);
     
     switch (cc_code) {
     case 0xfe:
@@ -619,6 +616,8 @@ void decode_cc(cc_decoder_t *dec, uint8_t *buffer, uint32_t buf_len)
 cc_decoder_t *cc_decoder_open()
 {
   cc_decoder_t *dec = (cc_decoder_t *) calloc(1, sizeof (cc_decoder_t));
+  if (!dec)
+    return NULL;
 
   ccmem_init(&dec->buffer[0]);
   ccmem_init(&dec->buffer[1]);

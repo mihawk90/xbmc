@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,8 +36,25 @@
 using namespace std;
 using namespace ANNOUNCEMENT;
 
-#define m_announcers XBMC_GLOBAL_USE(ANNOUNCEMENT::CAnnouncementManager::Globals).m_announcers
-#define m_critSection XBMC_GLOBAL_USE(ANNOUNCEMENT::CAnnouncementManager::Globals).m_critSection
+CAnnouncementManager::CAnnouncementManager()
+{ }
+
+CAnnouncementManager::~CAnnouncementManager()
+{
+  Deinitialize();
+}
+
+CAnnouncementManager& CAnnouncementManager::Get()
+{
+  static CAnnouncementManager s_instance;
+  return s_instance;
+}
+
+void CAnnouncementManager::Deinitialize()
+{
+  CSingleLock lock (m_critSection);
+  m_announcers.clear();
+}
 
 void CAnnouncementManager::AddAnnouncer(IAnnouncer *listener)
 {
@@ -94,7 +111,7 @@ void CAnnouncementManager::Announce(AnnouncementFlag flag, const char *sender, c
 
   // Extract db id of item
   CVariant object = data.isNull() || data.isObject() ? data : CVariant::VariantTypeObject;
-  CStdString type;
+  std::string type;
   int id = 0;
   
   if(item->HasPVRChannelInfoTag())
@@ -120,7 +137,11 @@ void CAnnouncementManager::Announce(AnnouncementFlag flag, const char *sender, c
       CVideoDatabase videodatabase;
       if (videodatabase.Open())
       {
-        if (videodatabase.LoadVideoInfo(item->GetPath(), *item->GetVideoInfoTag()))
+        std::string path = item->GetPath();
+        std::string videoInfoTagPath(item->GetVideoInfoTag()->m_strFileNameAndPath);
+        if (StringUtils::StartsWith(videoInfoTagPath, "removable://"))
+          path = videoInfoTagPath;
+        if (videodatabase.LoadVideoInfo(path, *item->GetVideoInfoTag()))
           id = item->GetVideoInfoTag()->m_iDbId;
 
         videodatabase.Close();
@@ -137,8 +158,8 @@ void CAnnouncementManager::Announce(AnnouncementFlag flag, const char *sender, c
       // TODO: Can be removed once this is properly handled when starting playback of a file
       item->SetProperty(LOOKUP_PROPERTY, false);
 
-      CStdString title = item->GetVideoInfoTag()->m_strTitle;
-      if (title.IsEmpty())
+      std::string title = item->GetVideoInfoTag()->m_strTitle;
+      if (title.empty())
         title = item->GetLabel();
       object["item"]["title"] = title;
 
@@ -168,7 +189,7 @@ void CAnnouncementManager::Announce(AnnouncementFlag flag, const char *sender, c
   else if (item->HasMusicInfoTag())
   {
     id = item->GetMusicInfoTag()->GetDatabaseId();
-    type = "song";
+    type = MediaTypeSong;
 
     // TODO: Can be removed once this is properly handled when starting playback of a file
     if (id <= 0 && !item->GetPath().empty() &&
@@ -193,8 +214,8 @@ void CAnnouncementManager::Announce(AnnouncementFlag flag, const char *sender, c
       // TODO: Can be removed once this is properly handled when starting playback of a file
       item->SetProperty(LOOKUP_PROPERTY, false);
 
-      CStdString title = item->GetMusicInfoTag()->GetTitle();
-      if (title.IsEmpty())
+      std::string title = item->GetMusicInfoTag()->GetTitle();
+      if (title.empty())
         title = item->GetLabel();
       object["item"]["title"] = title;
 

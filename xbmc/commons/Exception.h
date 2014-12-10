@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,8 +23,8 @@
 //---------------------------------------------------------
 // This include should be moved to commons but even as it is,
 // it wont cause a linker circular dependency since it's just
-// a header. 
-#include "utils/StdString.h"
+// a header.
+#include "utils/StringUtils.h"
 //---------------------------------------------------------
 #include "ilog.h"
 
@@ -57,7 +57,7 @@ namespace XbmcCommons
   private:
 
     std::string classname;
-    CStdString message;
+    std::string message;
 
   protected:
     static ILogger* logger;
@@ -72,7 +72,7 @@ namespace XbmcCommons
      */
     inline void Set(const char* fmt, va_list& argList)
     {
-      message.FormatV(fmt, argList);
+      message = StringUtils::FormatV(fmt, argList);
     }
 
     /**

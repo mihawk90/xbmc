@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -35,10 +35,9 @@
 
 using namespace PVR;
 using namespace EPG;
-using namespace std;
 
 CPVRChannelGroupInternal::CPVRChannelGroupInternal(bool bRadio) :
-  CPVRChannelGroup(bRadio, bRadio ? XBMC_INTERNAL_GROUP_RADIO : XBMC_INTERNAL_GROUP_TV, g_localizeStrings.Get(bRadio ? 19216 : 19217))
+  CPVRChannelGroup(bRadio, bRadio ? PVR_INTERNAL_GROUP_ID_RADIO : PVR_INTERNAL_GROUP_ID_TV, g_localizeStrings.Get(19287))
 {
   m_iHiddenChannels = 0;
   m_iGroupType      = PVR_GROUP_TYPE_INTERNAL;
@@ -53,6 +52,7 @@ CPVRChannelGroupInternal::CPVRChannelGroupInternal(const CPVRChannelGroup &group
 CPVRChannelGroupInternal::~CPVRChannelGroupInternal(void)
 {
   Unload();
+  g_PVRManager.UnregisterObserver(this);
 }
 
 bool CPVRChannelGroupInternal::Load(void)
@@ -60,7 +60,8 @@ bool CPVRChannelGroupInternal::Load(void)
   if (CPVRChannelGroup::Load())
   {
     UpdateChannelPaths();
-    CreateChannelEpgs();
+    g_PVRManager.RegisterObserver(this);
+      
     return true;
   }
 
@@ -73,8 +74,8 @@ void CPVRChannelGroupInternal::CheckGroupName(void)
   CSingleLock lock(m_critSection);
 
   /* check whether the group name is still correct, or channels will fail to load after the language setting changed */
-  CStdString strNewGroupName = g_localizeStrings.Get(m_bRadio ? 19216 : 19217);
-  if (!m_strGroupName.Equals(strNewGroupName))
+  std::string strNewGroupName = g_localizeStrings.Get(19287);
+  if (m_strGroupName != strNewGroupName)
   {
     SetGroupName(strNewGroupName, true);
     UpdateChannelPaths();
@@ -369,6 +370,8 @@ void CPVRChannelGroupInternal::CreateChannelEpg(CPVRChannelPtr channel, bool bFo
 
 bool CPVRChannelGroupInternal::CreateChannelEpgs(bool bForce /* = false */)
 {
+  if (!g_EpgContainer.IsStarted())
+    return false;
   {
     CSingleLock lock(m_critSection);
     for (unsigned int iChannelPtr = 0; iChannelPtr < m_members.size(); iChannelPtr++)
@@ -382,4 +385,12 @@ bool CPVRChannelGroupInternal::CreateChannelEpgs(bool bForce /* = false */)
   }
 
   return true;
+}
+
+void CPVRChannelGroupInternal::Notify(const Observable &obs, const ObservableMessage msg)
+{
+  if (msg == ObservableMessageManagerStateChanged)
+  {
+    g_PVRManager.TriggerEpgsCreate();
+  }
 }

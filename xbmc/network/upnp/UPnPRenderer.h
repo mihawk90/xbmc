@@ -1,4 +1,3 @@
-#pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
  *      http://xbmc.org
@@ -18,7 +17,9 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
-#include "PltMediaRenderer.h"
+#pragma once
+#include <Platinum/Source/Devices/MediaRenderer/PltMediaRenderer.h>
+
 #include "interfaces/IAnnouncer.h"
 
 namespace UPNP

@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 
 #include "GUIButtonControl.h"
 #include "utils/Stopwatch.h"
+#include "utils/StringValidation.h"
 
 /*!
  \ingroup controls
@@ -71,6 +72,8 @@ public:
 
   virtual CStdString GetLabel2() const;
 
+  void SetShowCursorAlways(bool always) { m_cursorShowAlways = always; }
+
   unsigned int GetCursorPosition() const;
   void SetCursorPosition(unsigned int iPosition);
 
@@ -78,18 +81,27 @@ public:
 
   void SetTextChangeActions(const CGUIAction& textChangeActions) { m_textChangeActions = textChangeActions; };
 
-  bool HasTextChangeActions() { return m_textChangeActions.HasActionsMeetingCondition(); };
+  bool HasTextChangeActions() const { return m_textChangeActions.HasActionsMeetingCondition(); };
+
+  virtual bool HasInvalidInput() const { return m_invalidInput; }
+  virtual void SetInputValidation(StringValidation::Validator inputValidator, void *data = NULL);
 
 protected:
+  virtual void SetFocus(bool focus);
   virtual void ProcessText(unsigned int currentTime);
   virtual void RenderText();
+  virtual CGUILabel::COLOR GetTextColor() const;
   CStdStringW GetDisplayedText() const;
+  bool SetStyledText(const CStdStringW &text);
   void RecalcLabelPosition();
   void ValidateCursor();
   void UpdateText(bool sendUpdate = true);
   void OnPasteClipboard();
   void OnSMSCharacter(unsigned int key);
   void DefaultConstructor();  
+
+  virtual bool ValidateInput(const CStdStringW &data) const;
+  void ValidateInput();
 
   /*! \brief Clear out the current text input if it's an MD5 password.
    \return true if the password is cleared, false otherwise.
@@ -107,6 +119,7 @@ protected:
 
   unsigned int m_cursorPos;
   unsigned int m_cursorBlink;
+  bool         m_cursorShowAlways;
 
   int m_inputHeading;
   INPUT_TYPE m_inputType;
@@ -114,9 +127,17 @@ protected:
 
   CGUIAction m_textChangeActions;
 
+  bool m_invalidInput;
+  StringValidation::Validator m_inputValidator;
+  void *m_inputValidatorData;
+
   unsigned int m_smsKeyIndex;
   unsigned int m_smsLastKey;
   CStopWatch   m_smsTimer;
+
+  std::wstring m_edit;
+  int          m_editOffset;
+  int          m_editLength;
 
   static const char*        smsLetters[10];
   static const unsigned int smsDelay;

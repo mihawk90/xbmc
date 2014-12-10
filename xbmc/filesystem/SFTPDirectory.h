@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -34,8 +34,8 @@ namespace XFILE
   public:
     CSFTPDirectory(void);
     virtual ~CSFTPDirectory(void);
-    virtual bool GetDirectory(const CStdString& strPath, CFileItemList &items);
-    virtual bool Exists(const char* strPath);
+    virtual bool GetDirectory(const CURL& url, CFileItemList &items);
+    virtual bool Exists(const CURL& url);
   };
 }
 #endif

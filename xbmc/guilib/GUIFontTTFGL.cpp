@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,6 +44,9 @@ using namespace std;
 CGUIFontTTFGL::CGUIFontTTFGL(const CStdString& strFileName)
 : CGUIFontTTFBase(strFileName)
 {
+  m_updateY1 = 0;
+  m_updateY2 = 0;
+  m_textureStatus = TEXTURE_VOID;
 }
 
 CGUIFontTTFGL::~CGUIFontTTFGL(void)
@@ -52,9 +55,16 @@ CGUIFontTTFGL::~CGUIFontTTFGL(void)
 
 void CGUIFontTTFGL::Begin()
 {
-  if (m_nestedBeginCount == 0)
+  if (m_nestedBeginCount == 0 && m_texture != NULL)
   {
-    if (!m_bTextureLoaded)
+    if (m_textureStatus == TEXTURE_REALLOCATED)
+    {
+      if (glIsTexture(m_nTexture))
+        g_TextureManager.ReleaseHwTexture(m_nTexture);
+      m_textureStatus = TEXTURE_VOID;
+    }
+    
+    if (m_textureStatus == TEXTURE_VOID)
     {
       // Have OpenGL generate a texture object handle for us
       glGenTextures(1, (GLuint*) &m_nTexture);
@@ -70,10 +80,21 @@ void CGUIFontTTFGL::Begin()
 
       // Set the texture image -- THIS WORKS, so the pixels must be wrong.
       glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, m_texture->GetWidth(), m_texture->GetHeight(), 0,
-                   GL_ALPHA, GL_UNSIGNED_BYTE, m_texture->GetPixels());
-
+                   GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+      
       VerifyGLState();
-      m_bTextureLoaded = true;
+      m_textureStatus = TEXTURE_UPDATED;
+    }
+
+    if (m_textureStatus == TEXTURE_UPDATED)
+    {
+      glBindTexture(GL_TEXTURE_2D, m_nTexture);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, m_updateY1, m_texture->GetWidth(), m_updateY2 - m_updateY1, GL_ALPHA, GL_UNSIGNED_BYTE,
+                      m_texture->GetPixels() + m_updateY1 * m_texture->GetPitch());
+      glDisable(GL_TEXTURE_2D);
+        
+      m_updateY1 = m_updateY2 = 0;
+      m_textureStatus = TEXTURE_READY;
     }
 
     // Turn Blending On
@@ -146,8 +167,12 @@ void CGUIFontTTFGL::End()
   glDrawArrays(GL_QUADS, 0, m_vertex_count);
   glPopClientAttrib();
 
+  glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_TEXTURE_2D);
   glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_TEXTURE_2D);
 #else
   // GLES 2.0 version. Cannot draw quads. Convert to triangles.
   GLint posLoc  = g_Windowing.GUIShaderGetPos();
@@ -203,11 +228,18 @@ CBaseTexture* CGUIFontTTFGL::ReallocTexture(unsigned int& newHeight)
     return NULL;
   }
   m_textureHeight = newTexture->GetHeight();
+  m_textureScaleY = 1.0f / m_textureHeight;
   m_textureWidth = newTexture->GetWidth();
+  m_textureScaleX = 1.0f / m_textureWidth;
+  if (m_textureHeight < newHeight)
+    CLog::Log(LOGWARNING, "%s: allocated new texture with height of %d, requested %d", __FUNCTION__, m_textureHeight, newHeight);
 
   memset(newTexture->GetPixels(), 0, m_textureHeight * newTexture->GetPitch());
   if (m_texture)
   {
+    m_updateY1 = 0;
+    m_updateY2 = m_texture->GetHeight();
+
     unsigned char* src = (unsigned char*) m_texture->GetPixels();
     unsigned char* dst = (unsigned char*) newTexture->GetPixels();
     for (unsigned int y = 0; y < m_texture->GetHeight(); y++)
@@ -218,6 +250,8 @@ CBaseTexture* CGUIFontTTFGL::ReallocTexture(unsigned int& newHeight)
     }
     delete m_texture;
   }
+
+  m_textureStatus = TEXTURE_REALLOCATED;
 
   return newTexture;
 }
@@ -235,29 +269,48 @@ bool CGUIFontTTFGL::CopyCharToTexture(FT_BitmapGlyph bitGlyph, unsigned int x1, 
     source += bitmap.width;
     target += m_texture->GetPitch();
   }
-  // THE SOURCE VALUES ARE THE SAME IN BOTH SITUATIONS.
-
-  // Since we have a new texture, we need to delete the old one
-  // the Begin(); End(); stuff is handled by whoever called us
-  if (m_bTextureLoaded)
+  
+  switch (m_textureStatus)
   {
-    g_graphicsContext.BeginPaint();  //FIXME
-    DeleteHardwareTexture();
-    g_graphicsContext.EndPaint();
-    m_bTextureLoaded = false;
-  }
+  case TEXTURE_UPDATED:
+    {
+      m_updateY1 = std::min(m_updateY1, y1);
+      m_updateY2 = std::max(m_updateY2, y2);
+    }
+    break;
+      
+  case TEXTURE_READY:
+    {
+      m_updateY1 = y1;
+      m_updateY2 = y2;
+      m_textureStatus = TEXTURE_UPDATED;
+    }
+    break;
+      
+  case TEXTURE_REALLOCATED:
+    {
+      m_updateY2 = std::max(m_updateY2, y2);
+    }
+    break;
 
+  case TEXTURE_VOID:
+  default:
+    break;
+  }
+  
   return TRUE;
 }
 
 
 void CGUIFontTTFGL::DeleteHardwareTexture()
 {
-  if (m_bTextureLoaded)
+  if (m_textureStatus != TEXTURE_VOID)
   {
     if (glIsTexture(m_nTexture))
       g_TextureManager.ReleaseHwTexture(m_nTexture);
-    m_bTextureLoaded = false;
+
+    m_textureStatus = TEXTURE_VOID;
+    m_updateY1 = m_updateY2 = 0;
   }
 }
 

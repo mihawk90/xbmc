@@ -3,7 +3,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,8 +21,8 @@
  *
  */
 
-#include "utils/StdString.h"
 #include "system.h"
+#include <stdarg.h>
 
 #define MAX_LEADBYTES             12
 #define MAX_DEFAULTCHAR           2
@@ -100,7 +100,7 @@ typedef struct _OSVERSIONINFO
   DWORD dwMinorVersion;
   DWORD dwBuildNumber;
   DWORD dwPlatformId;
-  TCHAR szCSDVersion[128];
+  char szCSDVersion[128];
 }
 OSVERSIONINFO, *LPOSVERSIONINFO;
 
@@ -608,9 +608,6 @@ extern "C" BOOL WINAPI dllFreeLibrary(HINSTANCE hLibModule);
 extern "C" FARPROC WINAPI dllGetProcAddress(HMODULE hModule, LPCSTR function);
 extern "C" HMODULE WINAPI dllGetModuleHandleA(LPCSTR lpModuleName);
 extern "C" DWORD WINAPI dllGetModuleFileNameA(HMODULE hModule, LPSTR lpFilename, DWORD nSize);
-
-//GetSystemInfo are hardcoded for Xbox only.
-extern "C" void WINAPI dllGetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 
 //Current just a dummy function
 extern "C" UINT WINAPI dllGetPrivateProfileIntA(LPCSTR lpAppName, LPCSTR lpKeyName,

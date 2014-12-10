@@ -1,23 +1,23 @@
 /*
 *      Copyright (C) 2005-2013 Team XBMC
-*      http://www.xbmc.org
-*
-*  This Program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-*
-*  This Program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with XBMC; see the file COPYING.  If not, see
-*  <http://www.gnu.org/licenses/>.
-*
-*  Parts of this code taken from Guido Vollbeding <http://sylvana.net/jpegcrop/exif_orientation.html>
-*
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ *  Parts of this code taken from Guido Vollbeding <http://sylvana.net/jpegcrop/exif_orientation.html>
+ *
 */
 
 #include "lib/libexif/libexif.h"
@@ -27,7 +27,7 @@
 #include "utils/log.h"
 #include "XBTF.h"
 #include "JpegIO.h"
-
+#include "utils/StringUtils.h"
 #include <setjmp.h>
 
 #define EXIF_TAG_ORIENTATION    0x0112
@@ -260,64 +260,14 @@ bool CJpegIO::Open(const CStdString &texturePath, unsigned int minx, unsigned in
   m_texturePath = texturePath;
 
   XFILE::CFile file;
-  if (file.Open(m_texturePath.c_str(), READ_TRUNCATED))
-  {
-    /*
-     GetLength() will typically return values that fall into three cases:
-       1. The real filesize. This is the typical case.
-       2. Zero. This is the case for some http:// streams for example.
-       3. Some value smaller than the real filesize. This is the case for an expanding file.
-
-     In order to handle all three cases, we read the file in chunks, relying on Read()
-     returning 0 at EOF.  To minimize (re)allocation of the buffer, the chunksize in
-     cases 1 and 3 is set to one byte larger** than the value returned by GetLength().
-     The chunksize in case 2 is set to the larger of 64k and GetChunkSize().
-
-     We fill the buffer entirely before reallocation.  Thus, reallocation never occurs in case 1
-     as the buffer is larger than the file, so we hit EOF before we hit the end of buffer.
-
-     To minimize reallocation, we double the chunksize each time up to a maxchunksize of 2MB.
-     */
-    unsigned int filesize = (unsigned int)file.GetLength();
-    unsigned int chunksize = filesize ? (filesize + 1) : std::max(65536U, (unsigned int)file.GetChunkSize());
-    unsigned int maxchunksize = 2048*1024U; /* max 2MB chunksize */
-
-    unsigned int total_read = 0, free_space = 0;
-    while (true)
-    {
-      if (!free_space)
-      { // (re)alloc
-        m_inputBuffSize += chunksize;
-        m_inputBuff = (unsigned char *)realloc(m_inputBuff, m_inputBuffSize);
-        if (!m_inputBuff)
-        {
-          CLog::Log(LOGERROR, "%s unable to allocate buffer of size %u", __FUNCTION__, m_inputBuffSize);
-          return false;
-        }
-        free_space = chunksize;
-        chunksize = std::min(chunksize*2, maxchunksize);
-      }
-      unsigned int read = file.Read(m_inputBuff + total_read, free_space);
-      free_space -= read;
-      total_read += read;
-      if (!read)
-        break;
-    }
-    m_inputBuffSize = total_read;
-    file.Close();
-
-    if (m_inputBuffSize == 0)
-      return false;
-  }
-  else
+  XFILE::auto_buffer buf;
+  if (file.LoadFile(texturePath, buf) <= 0)
     return false;
 
-  if (!read)
-    return true;
+  m_inputBuffSize = buf.size();
+  m_inputBuff = (unsigned char*)buf.detach();
 
-  if (Read(m_inputBuff, m_inputBuffSize, minx, miny))
-    return true;
-  return false;
+  return Read(m_inputBuff, m_inputBuffSize, minx, miny);
 }
 
 bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int minx, unsigned int miny)
@@ -370,8 +320,9 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
     m_cinfo.scale_denom = 8;
     m_cinfo.out_color_space = JCS_RGB;
     unsigned int maxtexsize = g_Windowing.GetMaxTextureSize();
-    for (m_cinfo.scale_num = 1; m_cinfo.scale_num <= 8; m_cinfo.scale_num++)
+    for (unsigned int scale = 1; scale <= 8; scale++)
     {
+      m_cinfo.scale_num = scale;
       jpeg_calc_output_dimensions(&m_cinfo);
       if ((m_cinfo.output_width > maxtexsize) || (m_cinfo.output_height > maxtexsize))
       {
@@ -490,7 +441,7 @@ bool CJpegIO::CreateThumbnailFromSurface(unsigned char* buffer, unsigned int wid
   long unsigned int outBufSize = width * height;
   unsigned char* result;
   unsigned char* src = buffer;
-  unsigned char* rgbbuf, *src2, *dst2;
+  unsigned char* rgbbuf;
 
   if(buffer == NULL)
   {
@@ -516,8 +467,8 @@ bool CJpegIO::CreateThumbnailFromSurface(unsigned char* buffer, unsigned int wid
     unsigned char* dst = rgbbuf;
     for (unsigned int y = 0; y < height; y++)
     {
-      dst2 = dst;
-      src2 = src;
+      unsigned char* dst2 = dst;
+      unsigned char* src2 = src;
       for (unsigned int x = 0; x < width; x++, src2 += 4)
       {
         *dst2++ = src2[2];
@@ -575,22 +526,16 @@ bool CJpegIO::CreateThumbnailFromSurface(unsigned char* buffer, unsigned int wid
     delete [] rgbbuf;
 
   XFILE::CFile file;
-  if (file.OpenForWrite(destFile, true))
-  {
-    file.Write(result, outBufSize);
-    file.Close();
-    free(result);
-    return true;
-  }
+  const bool ret = file.OpenForWrite(destFile, true) && file.Write(result, outBufSize) == outBufSize;
   free(result);
-  return false;
+
+  return ret;
 }
 
 // override libjpeg's error function to avoid an exit() call
 void CJpegIO::jpeg_error_exit(j_common_ptr cinfo)
 {
-  CStdString msg;
-  msg.Format("Error %i: %s",cinfo->err->msg_code, cinfo->err->jpeg_message_table[cinfo->err->msg_code]);
+  CStdString msg = StringUtils::Format("Error %i: %s",cinfo->err->msg_code, cinfo->err->jpeg_message_table[cinfo->err->msg_code]);
   CLog::Log(LOGWARNING, "JpegIO: %s", msg.c_str());
 
   my_error_mgr *myerr = (my_error_mgr*)cinfo->err;
@@ -720,10 +665,7 @@ unsigned int CJpegIO::GetExifOrientation(unsigned char* exif_data, unsigned int 
     orientation = exif_data[offset+8];
   }
   if (orientation > 8)
-  {
     orientation = 0;
-    return 0;
-  }
 
   return orientation;//done
 }
@@ -742,7 +684,7 @@ bool CJpegIO::CreateThumbnailFromSurface(unsigned char* bufferin, unsigned int w
   JSAMPROW row_pointer[1];
   long unsigned int outBufSize = width * height;
   unsigned char* src = bufferin;
-  unsigned char* rgbbuf, *src2, *dst2;
+  unsigned char* rgbbuf;
 
   if(bufferin == NULL)
   {
@@ -768,8 +710,9 @@ bool CJpegIO::CreateThumbnailFromSurface(unsigned char* bufferin, unsigned int w
     unsigned char* dst = rgbbuf;
     for (unsigned int y = 0; y < height; y++)
     {
-      dst2 = dst;
-      src2 = src;
+
+      unsigned char* dst2 = dst;
+      unsigned char* src2 = src;
       for (unsigned int x = 0; x < width; x++, src2 += 4)
       {
         *dst2++ = src2[2];

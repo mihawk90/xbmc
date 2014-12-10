@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -71,7 +71,7 @@ bool CDVDDemuxCDDA::Open(CDVDInputStream* pInput)
   m_stream->iBitRate        = 44100 * 2 * 16;
   m_stream->iChannels       = 2;
   m_stream->type            = STREAM_AUDIO;
-  m_stream->codec           = CODEC_ID_PCM_S16LE;
+  m_stream->codec           = AV_CODEC_ID_PCM_S16LE;
 
   return true;
 }
@@ -144,6 +144,23 @@ DemuxPacket* CDVDDemuxCDDA::Read()
   return pPacket;
 }
 
+bool CDVDDemuxCDDA::SeekTime(int time, bool backwords, double* startpts)
+{
+  int bytes_per_second = m_stream->iBitRate>>3;
+  // clamp seeks to bytes per full sample
+  int clamp_bytes = (m_stream->iBitsPerSample>>3) * m_stream->iChannels;
+
+  // time is in milliseconds
+  int64_t seekPos = m_pInput->Seek((((int64_t)time * bytes_per_second / 1000) / clamp_bytes ) * clamp_bytes, SEEK_SET) > 0;
+  if (seekPos > 0)
+    m_bytes = seekPos;
+
+  if (startpts)
+    *startpts = (double)m_bytes * DVD_TIME_BASE / bytes_per_second;
+
+  return seekPos > 0;
+};
+
 int CDVDDemuxCDDA::GetStreamLength()
 {
   int64_t num_track_bytes = m_pInput->GetLength();
@@ -173,7 +190,7 @@ std::string CDVDDemuxCDDA::GetFileName()
     return "";
 }
 
-void CDVDDemuxCDDA::GetStreamCodecName(int iStreamId, CStdString &strName)
+void CDVDDemuxCDDA::GetStreamCodecName(int iStreamId, std::string &strName)
 {
   if (m_stream && iStreamId == 0)
     strName = "pcm";

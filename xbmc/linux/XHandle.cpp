@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -154,7 +154,7 @@ BOOL WINAPI DuplicateHandle(
 )
 {
   /* only a simple version of this is supported */
-  ASSERT(hSourceProcessHandle == GetCurrentProcess()
+  assert(hSourceProcessHandle == GetCurrentProcess()
       && hTargetProcessHandle == GetCurrentProcess()
       && dwOptions            == DUPLICATE_SAME_ACCESS);
 

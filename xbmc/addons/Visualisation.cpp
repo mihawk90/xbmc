@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,8 +22,9 @@
 #include "utils/fft.h"
 #include "GUIInfoManager.h"
 #include "Application.h"
+#include "guilib/GraphicContext.h"
+#include "guilib/WindowIDs.h"
 #include "music/tags/MusicInfoTag.h"
-#include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/DisplaySettings.h"
@@ -32,7 +33,6 @@
 #include "utils/StringUtils.h"
 #include "cores/IPlayer.h"
 #include "cores/AudioEngine/AEFactory.h"
-#include "cores/AudioEngine/Utils/AEConvert.h"
 #ifdef TARGET_POSIX
 #include <dlfcn.h>
 #include "filesystem/SpecialProtocol.h"
@@ -78,7 +78,7 @@ bool CVisualisation::Create(int x, int y, int w, int h, void *device)
   m_pInfo->y = y;
   m_pInfo->width = w;
   m_pInfo->height = h;
-  m_pInfo->pixelRatio = CDisplaySettings::Get().GetResolutionInfo(g_graphicsContext.GetVideoResolution()).fPixelRatio;
+  m_pInfo->pixelRatio = g_graphicsContext.GetResInfo().fPixelRatio;
 
   m_pInfo->name = strdup(Name().c_str());
   m_pInfo->presets = strdup(CSpecialProtocol::TranslatePath(Path()).c_str());
@@ -88,11 +88,11 @@ bool CVisualisation::Create(int x, int y, int w, int h, void *device)
   if (CAddonDll<DllVisualisation, Visualisation, VIS_PROPS>::Create() == ADDON_STATUS_OK)
   {
     // Start the visualisation
-    CStdString strFile = URIUtils::GetFileName(g_application.CurrentFile());
+    std::string strFile = URIUtils::GetFileName(g_application.CurrentFile());
     CLog::Log(LOGDEBUG, "Visualisation::Start()\n");
     try
     {
-      m_pStruct->Start(m_iChannels, m_iSamplesPerSec, m_iBitsPerSample, strFile);
+      m_pStruct->Start(m_iChannels, m_iSamplesPerSec, m_iBitsPerSample, strFile.c_str());
     }
     catch (std::exception e)
     {
@@ -109,15 +109,14 @@ bool CVisualisation::Create(int x, int y, int w, int h, void *device)
 
     CreateBuffers();
 
-    if (g_application.m_pPlayer)
-      g_application.m_pPlayer->RegisterAudioCallback(this);
+    CAEFactory::RegisterAudioCallback(this);
 
     return true;
   }
   return false;
 }
 
-void CVisualisation::Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, const CStdString strSongName)
+void CVisualisation::Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, const std::string &strSongName)
 {
   // notify visz. that new song has been started
   // pass it the nr of audio channels, sample rate, bits/sample and offcourse the songname
@@ -174,7 +173,7 @@ void CVisualisation::Render()
 
 void CVisualisation::Stop()
 {
-  if (g_application.m_pPlayer) g_application.m_pPlayer->UnRegisterAudioCallback();
+  CAEFactory::UnregisterAudioCallback();
   if (Initialized())
   {
     CAddonDll<DllVisualisation, Visualisation, VIS_PROPS>::Stop();
@@ -213,9 +212,9 @@ bool CVisualisation::OnAction(VIS_ACTION action, void *param)
       if ( action == VIS_ACTION_UPDATE_TRACK && param )
       {
         const CMusicInfoTag* tag = (const CMusicInfoTag*)param;
-        CStdString artist(StringUtils::Join(tag->GetArtist(), g_advancedSettings.m_musicItemSeparator));
-        CStdString albumArtist(StringUtils::Join(tag->GetAlbumArtist(), g_advancedSettings.m_musicItemSeparator));
-        CStdString genre(StringUtils::Join(tag->GetGenre(), g_advancedSettings.m_musicItemSeparator));
+        std::string artist(StringUtils::Join(tag->GetArtist(), g_advancedSettings.m_musicItemSeparator));
+        std::string albumArtist(StringUtils::Join(tag->GetAlbumArtist(), g_advancedSettings.m_musicItemSeparator));
+        std::string genre(StringUtils::Join(tag->GetGenre(), g_advancedSettings.m_musicItemSeparator));
         
         VisTrack track;
         track.title       = tag->GetTitle().c_str();
@@ -361,7 +360,7 @@ bool CVisualisation::UpdateTrack()
   return handled;
 }
 
-bool CVisualisation::GetPresetList(std::vector<CStdString> &vecpresets)
+bool CVisualisation::GetPresetList(std::vector<std::string> &vecpresets)
 {
   vecpresets = m_presets;
   return !m_presets.empty();
@@ -394,7 +393,7 @@ bool CVisualisation::GetPresets()
   return (!m_presets.empty());
 }
 
-bool CVisualisation::GetSubModuleList(std::vector<CStdString> &vecmodules)
+bool CVisualisation::GetSubModuleList(std::vector<std::string> &vecmodules)
 {
   vecmodules = m_submodules;
   return !m_submodules.empty();
@@ -427,11 +426,11 @@ bool CVisualisation::GetSubModules()
   return (!m_submodules.empty());
 }
 
-CStdString CVisualisation::GetFriendlyName(const CStdString& strVisz,
-                                           const CStdString& strSubModule)
+std::string CVisualisation::GetFriendlyName(const std::string& strVisz,
+                                            const std::string& strSubModule)
 {
   // should be of the format "moduleName (visName)"
-  return CStdString(strSubModule + " (" + strVisz + ")");
+  return strSubModule + " (" + strVisz + ")";
 }
 
 bool CVisualisation::IsLocked()
@@ -477,7 +476,7 @@ unsigned CVisualisation::GetPreset()
   return index;
 }
 
-CStdString CVisualisation::GetPresetName()
+std::string CVisualisation::GetPresetName()
 {
   if (!m_presets.empty())
     return m_presets[GetPreset()];

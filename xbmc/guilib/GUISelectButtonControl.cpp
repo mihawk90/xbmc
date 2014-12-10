@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -207,6 +207,14 @@ bool CGUISelectButtonControl::OnMessage(CGUIMessage& message)
     {
       m_iDefaultItem = m_iCurrentItem = message.GetParam1();
       return true;
+    }
+    else if (message.GetMessage() == GUI_MSG_SET_LABELS && message.GetPointer())
+    {
+      const std::vector< std::pair<std::string, int> > *labels = (const std::vector< std::pair<std::string, int> > *)message.GetPointer();
+      m_vecItems.clear();
+      for (std::vector< std::pair<std::string, int> >::const_iterator i = labels->begin(); i != labels->end(); ++i)
+        m_vecItems.push_back(i->first);
+      m_iDefaultItem = m_iCurrentItem = message.GetParam1();
     }
   }
 

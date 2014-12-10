@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -101,9 +101,9 @@ protected:
   void PrintImportTable(ImportDirTable_t *ImportDirTable);
   void PrintExportTable(ExportDirTable_t *ExportDirTable);
 
-  int ResolveOrdinal(char*, unsigned long, void**);
-  int ResolveName(char*, char*, void **);
-  char* ResolveReferencedDll(char* dll);
+  int ResolveOrdinal(const char*, unsigned long, void**);
+  int ResolveName(const char*, char*, void **);
+  const char* ResolveReferencedDll(const char* dll);
   int LoadExports();
   void LoadSymbols();
   static void UnloadSymbols();

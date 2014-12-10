@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -54,10 +54,10 @@ public:
   const char* GetType() const { return m_displayProgress?"filemanager":""; }
 
   virtual bool DoWork();
-  const CStdString &GetAverageSpeed()     { return m_avgSpeed; }
-  const CStdString &GetCurrentOperation() { return m_currentOperation; }
-  const CStdString &GetCurrentFile()      { return m_currentFile; }
-  const CFileItemList &GetItems()         { return m_items; }
+  const CStdString &GetAverageSpeed()     const { return m_avgSpeed; }
+  const CStdString &GetCurrentOperation() const { return m_currentOperation; }
+  const CStdString &GetCurrentFile()      const { return m_currentFile; }
+  const CFileItemList &GetItems()         const { return m_items; }
   FileAction GetAction() const            { return m_action; }
   int GetHeading() const                  { return m_heading; }
   int GetLine() const                     { return m_line; }

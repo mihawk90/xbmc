@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -90,12 +90,12 @@ void tracker_dll_set_addr(DllLoader* pDll, uintptr_t min, uintptr_t max)
   }
 }
 
-char* tracker_getdllname(uintptr_t caller)
+const char* tracker_getdllname(uintptr_t caller)
 {
   DllTrackInfo *track = tracker_get_dlltrackinfo(caller);
   if(track)
     return track->pDll->GetFileName();
-  return (char*)"";
+  return "";
 }
 
 DllTrackInfo* tracker_get_dlltrackinfo(uintptr_t caller)

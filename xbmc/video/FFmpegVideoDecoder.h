@@ -3,7 +3,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,24 +16,22 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with XBMC; see the file COPYING.  If not, write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
- *  http://www.gnu.org/copyleft/gpl.html
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "utils/StdString.h"
 
 class CBaseTexture;
-class m_dllAvFormat;
-class m_dllAvCodec;
-class m_dllAvUtil;
-class m_dllSwScale;
 
+extern "C" {
 struct AVFormatContext;
 struct AVCodecContext;
 struct AVCodec;
 struct AVFrame;
+struct AVPicture;
+}
 
 /**
  * A simple FFMpeg-based background video decoder.
@@ -142,10 +140,6 @@ public:
 private:
   bool readFrame( int frame );
   
-  DllAvFormat     *m_dllAvFormat;
-  DllAvCodec      *m_dllAvCodec;
-  DllAvUtil       *m_dllAvUtil;
-  DllSwScale      *m_dllSwScale;
   AVFormatContext *m_pFormatCtx;
   AVCodecContext  *m_pCodecCtx;
   AVCodec         *m_pCodec;

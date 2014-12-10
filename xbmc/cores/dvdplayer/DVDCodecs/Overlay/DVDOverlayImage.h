@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ public:
     }
 
     palette_colors = src.palette_colors;
-    linesize       = sub_w;
+    linesize       = sub_w * bpp;
     x              = sub_x;
     y              = sub_y;
     width          = sub_w;
@@ -92,14 +92,14 @@ public:
     source_width   = src.source_width;
     source_height  = src.source_height;
 
-    data = (uint8_t*)malloc(height*linesize);
+    data = (uint8_t*)malloc(sub_h * linesize);
 
     uint8_t* s = src.data_at(sub_x, sub_y);
     uint8_t* t = data;
 
     for(int row = 0;row < sub_h; ++row)
     {
-      memcpy(t, s, width*bpp);
+      memcpy(t, s, linesize);
       s += src.linesize;
       t += linesize;
     }

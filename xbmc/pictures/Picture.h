@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -65,6 +65,7 @@ class CThumbnailWriter : public CJob
   public:
     //WARNING: buffer is deleted from DoWork()
     CThumbnailWriter(unsigned char* buffer, int width, int height, int stride, const CStdString& thumbFile);
+    ~CThumbnailWriter();
     bool DoWork();
 
   private:

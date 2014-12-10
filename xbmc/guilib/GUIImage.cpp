@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -37,9 +37,14 @@ CGUIImage::CGUIImage(int parentID, int controlID, float posX, float posY, float 
 }
 
 CGUIImage::CGUIImage(const CGUIImage &left)
-    : CGUIControl(left), m_texture(left.m_texture)
+  : CGUIControl(left), 
+  m_image(left.m_image),
+  m_info(left.m_info),
+  m_texture(left.m_texture),
+  m_fadingTextures(),
+  m_currentTexture(),
+  m_currentFallback()
 {
-  m_info = left.m_info;
   m_crossFadeTime = left.m_crossFadeTime;
   // defaults
   m_currentFadeTime = 0;
@@ -95,9 +100,9 @@ void CGUIImage::AllocateOnDemand()
 void CGUIImage::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
   // check whether our image failed to allocate, and if so drop back to the fallback image
-  if (m_texture.FailedToAlloc() && !m_texture.GetFileName().Equals(m_info.GetFallback()))
+  if (m_texture.FailedToAlloc() && m_texture.GetFileName() != m_info.GetFallback())
   {
-    if (!m_currentFallback.IsEmpty() && !m_texture.GetFileName().Equals(m_currentFallback))
+    if (!m_currentFallback.empty() && m_texture.GetFileName() != m_currentFallback)
       m_texture.SetFileName(m_currentFallback);
     else
       m_texture.SetFileName(m_info.GetFallback());
@@ -122,10 +127,10 @@ void CGUIImage::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions
         if (!ProcessFading(*i, frameTime, currentTime))
           i = m_fadingTextures.erase(i);
         else
-          i++;
+          ++i;
       }
 
-      if (m_texture.ReadyToRender() || m_texture.GetFileName().IsEmpty())
+      if (m_texture.ReadyToRender() || m_texture.GetFileName().empty())
       { // fade out the last one as well
         if (!ProcessFading(m_fadingTextures[m_fadingTextures.size() - 1], frameTime, currentTime))
           m_fadingTextures.erase(m_fadingTextures.end() - 1);
@@ -146,7 +151,7 @@ void CGUIImage::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions
       }
     }
 
-    if (m_texture.ReadyToRender() || m_texture.GetFileName().IsEmpty())
+    if (m_texture.ReadyToRender() || m_texture.GetFileName().empty())
     { // fade the new one in
       m_currentFadeTime += frameTime;
       if (m_currentFadeTime > m_crossFadeTime || frameTime == 0) // for if we allocate straight away on creation
@@ -169,7 +174,7 @@ void CGUIImage::Render()
 {
   if (!IsVisible()) return;
 
-  for (vector<CFadingTexture *>::iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); itr++)
+  for (vector<CFadingTexture *>::iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); ++itr)
     (*itr)->m_texture->Render();
 
   m_texture.Render();
@@ -212,12 +217,22 @@ bool CGUIImage::OnMessage(CGUIMessage& message)
       FreeTextures(true); // true as we want to free the texture immediately
     return true;
   }
+  else if (message.GetMessage() == GUI_MSG_SET_FILENAME)
+  {
+    SetFileName(message.GetLabel());
+    return true;
+  }
+  else if (message.GetMessage() == GUI_MSG_GET_FILENAME)
+  {
+    message.SetLabel(GetFileName());
+    return true;
+  }
   return CGUIControl::OnMessage(message);
 }
 
 void CGUIImage::AllocResources()
 {
-  if (m_texture.GetFileName().IsEmpty())
+  if (m_texture.GetFileName().empty())
     return;
 
   CGUIControl::AllocResources();
@@ -230,7 +245,7 @@ void CGUIImage::FreeTextures(bool immediately /* = false */)
   for (unsigned int i = 0; i < m_fadingTextures.size(); i++)
     delete m_fadingTextures[i];
   m_fadingTextures.clear();
-  m_currentTexture.Empty();
+  m_currentTexture.clear();
   if (!m_info.IsConstant()) // constant textures never change
     m_texture.SetFileName("");
 }
@@ -282,7 +297,7 @@ CRect CGUIImage::CalcRenderRegion() const
 {
   CRect region = m_texture.GetRenderRect();
 
-  for (vector<CFadingTexture *>::const_iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); itr++)
+  for (vector<CFadingTexture *>::const_iterator itr = m_fadingTextures.begin(); itr != m_fadingTextures.end(); ++itr)
     region.Union( (*itr)->m_texture->GetRenderRect() );
 
   return CGUIControl::CalcRenderRegion().Intersect(region);
@@ -301,14 +316,17 @@ void CGUIImage::SetAspectRatio(const CAspectRatio &aspect)
 void CGUIImage::SetCrossFade(unsigned int time)
 {
   m_crossFadeTime = time;
-  if (!m_crossFadeTime && m_texture.IsLazyLoaded() && !m_info.GetFallback().IsEmpty())
+  if (!m_crossFadeTime && m_texture.IsLazyLoaded() && !m_info.GetFallback().empty())
     m_crossFadeTime = 1;
 }
 
-void CGUIImage::SetFileName(const CStdString& strFileName, bool setConstant)
+void CGUIImage::SetFileName(const CStdString& strFileName, bool setConstant, const bool useCache)
 {
   if (setConstant)
     m_info.SetLabel(strFileName, "", GetParentID());
+
+  // Set whether or not to use cache
+  m_texture.SetUseCache(useCache);
 
   if (m_crossFadeTime)
   {
@@ -316,7 +334,7 @@ void CGUIImage::SetFileName(const CStdString& strFileName, bool setConstant)
     if (m_currentTexture.Equals(strFileName))
       return; // nothing to do - we already have this image
 
-    if (m_texture.ReadyToRender() || m_texture.GetFileName().IsEmpty())
+    if (m_texture.ReadyToRender() || m_texture.GetFileName().empty())
     { // save the current image
       m_fadingTextures.push_back(new CFadingTexture(m_texture, m_currentFadeTime));
       MarkDirtyRegion();
@@ -386,7 +404,7 @@ unsigned char CGUIImage::GetFadeLevel(unsigned int time) const
   return (unsigned char)(255.0f * (1 - pow(1-alpha, amount))/alpha);
 }
 
-CStdString CGUIImage::GetDescription(void) const
+std::string CGUIImage::GetDescription(void) const
 {
   return GetFileName();
 }

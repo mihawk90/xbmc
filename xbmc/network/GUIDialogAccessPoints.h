@@ -3,7 +3,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,15 +36,15 @@ public:
   virtual ~CGUIDialogAccessPoints(void);
   virtual void OnInitWindow();
   virtual bool OnAction(const CAction &action);
-  void SetInterfaceName(CStdString interfaceName);
-  CStdString GetSelectedAccessPointEssId();
+  void SetInterfaceName(std::string interfaceName);
+  std::string GetSelectedAccessPointEssId();
   EncMode GetSelectedAccessPointEncMode();
   bool WasItemSelected();
 
 private:
   std::vector<NetworkAccessPoint> m_aps;
-  CStdString m_interfaceName;
-  CStdString m_selectedAPEssId;
+  std::string m_interfaceName;
+  std::string m_selectedAPEssId;
   EncMode m_selectedAPEncMode;
   bool m_wasItemSelected;
   CFileItemList *m_accessPoints;

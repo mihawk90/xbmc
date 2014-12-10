@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,10 +22,12 @@
 #include <map>
 
 #include "addons/include/xbmc_pvr_types.h"
-#include "settings/ISettingCallback.h"
+#include "settings/lib/ISettingCallback.h"
 #include "threads/Event.h"
 #include "threads/Thread.h"
 #include "utils/JobManager.h"
+#include "utils/Observer.h"
+#include "interfaces/IAnnouncer.h"
 
 class CGUIDialogProgressBarHandle;
 class CStopWatch;
@@ -68,11 +70,11 @@ namespace PVR
     PlaybackTypeRadio
   };
 
-  enum ChannelStartLast
+  enum ContinueLastChannelOnStartup
   {
-    START_LAST_CHANNEL_OFF  = 0,
-    START_LAST_CHANNEL_MIN,
-    START_LAST_CHANNEL_ON
+    CONTINUE_LAST_CHANNEL_OFF  = 0,
+    CONTINUE_LAST_CHANNEL_IN_BACKGROUND,
+    CONTINUE_LAST_CHANNEL_IN_FOREGROUND
   };
 
   #define g_PVRManager       CPVRManager::Get()
@@ -83,7 +85,7 @@ namespace PVR
 
   typedef boost::shared_ptr<PVR::CPVRChannelGroup> CPVRChannelGroupPtr;
 
-  class CPVRManager : public ISettingCallback, private CThread
+  class CPVRManager : public ISettingCallback, private CThread, public Observable, public ANNOUNCEMENT::IAnnouncer
   {
     friend class CPVRClients;
 
@@ -93,11 +95,19 @@ namespace PVR
      */
     CPVRManager(void);
 
+    /*!
+     * @brief Updates the last watched timestamps of the channel and group which are currently playing.
+     * @param channel The channel which is updated
+     */
+    void UpdateLastWatched(CPVRChannel &channel);
+
   public:
     /*!
      * @brief Stop the PVRManager and destroy all objects it created.
      */
     virtual ~CPVRManager(void);
+
+    virtual void Announce(ANNOUNCEMENT::AnnouncementFlag flag, const char *sender, const char *message, const CVariant &data);
 
     /*!
      * @brief Get the instance of the PVRManager.
@@ -135,9 +145,9 @@ namespace PVR
     /*!
      * @brief Start the PVRManager, which loads all PVR data and starts some threads to update the PVR data.
      * @param bAsync True to (re)start the manager from another thread
-     * @param bOpenPVRWindow True to open the PVR window after starting, false otherwise
+     * @param openWindowId Window id to open after starting
      */
-    void Start(bool bAsync = false, bool bOpenPVRWindow = false);
+    void Start(bool bAsync = false, int openWindowId = 0);
 
     /*!
      * @brief Stop the PVRManager and destroy all objects it created.
@@ -153,6 +163,11 @@ namespace PVR
      * @return True when a PVR window is active, false otherwise.
      */
     bool IsPVRWindowActive(void) const;
+
+    /*!
+     * @return True when the given window id is an PVR window, false otherwise.
+     */
+    static bool IsPVRWindow(int windowId);
 
     /*!
      * @brief Check whether an add-on can be upgraded or installed without restarting the pvr manager, when the add-on is in use or the pvr window is active
@@ -189,7 +204,7 @@ namespace PVR
      * @param dwInfo The string to get.
      * @return The requested string or an empty one if it wasn't found.
      */
-    bool TranslateCharInfo(DWORD dwInfo, CStdString &strValue) const;
+    bool TranslateCharInfo(DWORD dwInfo, std::string &strValue) const;
 
     /*!
      * @brief Get a GUIInfoManager integer.
@@ -227,7 +242,37 @@ namespace PVR
     /*!
      * @return True while the PVRManager is initialising.
      */
-    bool IsInitialising(void) const;
+    inline bool IsInitialising(void) const
+    {
+      return GetState() == ManagerStateStarting;
+    }
+    
+    /*!
+     * @brief Check whether the PVRManager has fully started.
+     * @return True if started, false otherwise.
+     */
+    inline bool IsStarted(void) const
+    {
+      return GetState() == ManagerStateStarted;
+    }
+    
+    /*!
+     * @brief Check whether the PVRManager is stopping
+     * @return True while the PVRManager is stopping.
+     */
+    inline bool IsStopping(void) const
+    {
+      return GetState() == ManagerStateStopping;
+    }
+    
+    /*!
+     * @brief Check whether the PVRManager has been stopped.
+     * @return True if stopped, false otherwise.
+     */
+    inline bool IsStopped(void) const
+    {
+      return GetState() == ManagerStateStopped;
+    }
 
     /*!
      * @brief Return the channel that is currently playing.
@@ -244,10 +289,10 @@ namespace PVR
     int GetCurrentEpg(CFileItemList &results) const;
 
     /*!
-     * @brief Check whether the PVRManager has fully started.
-     * @return True if started, false otherwise.
+     * @brief Check whether EPG tags for channels have been created.
+     * @return True if EPG tags have been created, false otherwise.
      */
-    bool IsStarted(void) const;
+    bool EpgsCreated(void) const;
 
     /*!
      * @brief Reset the playing EPG tag.
@@ -260,7 +305,7 @@ namespace PVR
      * @param bPreview True to show a preview, false otherwise.
      * @return Trrue if the switch was successful, false otherwise.
      */
-    bool PerformChannelSwitch(const CPVRChannel &channel, bool bPreview);
+    bool PerformChannelSwitch(CPVRChannel &channel, bool bPreview);
 
     /*!
      * @brief Close an open PVR stream.
@@ -280,6 +325,13 @@ namespace PVR
      * @return True if the stream was opened, false otherwise.
      */
     bool OpenRecordedStream(const CPVRRecording &tag);
+
+    /*!
+    * @brief Try to playback the given file item
+    * @param item The file item to playback.
+    * @return True if the file could be playback, otherwise false.
+    */
+    bool PlayMedia(const CFileItem& item);
 
     /*!
      * @brief Start recording on a given channel if it is not already recording, stop if it is.
@@ -333,6 +385,11 @@ namespace PVR
     CPVRChannelGroupPtr GetPlayingGroup(bool bRadio = false);
 
     /*!
+     * @brief Let the background thread create epg tags for all channels.
+     */
+    void TriggerEpgsCreate(void);
+
+    /*!
      * @brief Let the background thread update the recordings list.
      */
     void TriggerRecordingsUpdate(void);
@@ -353,9 +410,9 @@ namespace PVR
     void TriggerChannelGroupsUpdate(void);
 
     /*!
-     * @brief Let the background thread save the current video settings.
+     * @brief Let the background thread search for missing channel icons.
      */
-    void TriggerSaveChannelSettings(void);
+    void TriggerSearchMissingChannelIcons(void);
 
     /*!
      * @brief Update the channel that is currently active.
@@ -404,10 +461,10 @@ namespace PVR
     /*!
      * @brief Start playback on a channel.
      * @param channel The channel to start to play.
-     * @param bPreview If true, open minimised.
+     * @param bMinimised If true, playback starts minimised, otherwise in fullscreen.
      * @return True if playback was started, false otherwise.
      */
-    bool StartPlayback(const CPVRChannel *channel, bool bPreview = false);
+    bool StartPlayback(const CPVRChannel *channel, bool bMinimised = false);
 
     /*!
      * @brief Start playback of the last used channel, and if it fails use first channel in the current channelgroup.
@@ -460,16 +517,6 @@ namespace PVR
     void SearchMissingChannelIcons(void);
 
     /*!
-     * @brief Persist the current channel settings in the database.
-     */
-    void SaveCurrentChannelSettings(void);
-
-    /*!
-     * @brief Load the settings for the current channel from the database.
-     */
-    void LoadCurrentChannelSettings(void);
-
-    /*!
      * @brief Check if channel is parental locked. Ask for PIN if neccessary.
      * @param channel The channel to open.
      * @return True if channel is unlocked (by default or PIN unlocked), false otherwise.
@@ -488,7 +535,7 @@ namespace PVR
      * @param strTitle Override the title of the dialog if set.
      * @return True if entered PIN was correct, false otherwise.
      */
-    bool CheckParentalPIN(const char *strTitle = NULL);
+    bool CheckParentalPIN(const std::string& strTitle = "");
 
     /*!
      * @brief Executes "pvrpowermanagement.setwakeupcmd"
@@ -508,7 +555,17 @@ namespace PVR
      */
     bool OnAction(const CAction &action);
 
-    static void SettingOptionsPvrStartLastChannelFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current);
+    /*!
+     * @brief Create EPG tags for all channels in internal channel groups
+     * @return True if EPG tags where created successfully, false otherwise
+     */
+    bool CreateChannelEpgs(void);
+
+    /*!
+    * @brief get the name of the channel group of the current playing channel
+    * @return name of channel if tv channel is playing
+    */
+    std::string GetPlayingTVGroupName();
 
   protected:
     /*!
@@ -523,7 +580,7 @@ namespace PVR
      * @return If at least one client and all pvr data was loaded, false otherwise.
      */
     bool Load(void);
-
+    
     /*!
      * @brief Update all recordings.
      */
@@ -579,7 +636,7 @@ namespace PVR
      * @param strText The current status.
      * @param iProgress The current progress in %.
      */
-    void ShowProgressDialog(const CStdString &strText, int iProgress);
+    void ShowProgressDialog(const std::string &strText, int iProgress);
 
     /*!
      * @brief Hide the progress dialog if it's visible.
@@ -589,6 +646,13 @@ namespace PVR
     void ExecutePendingJobs(void);
 
     bool IsJobPending(const char *strJobName) const;
+
+    /*!
+     * @brief Adds the job to the list of pending jobs unless an identical 
+     * job is already queued
+     * @param job the job
+     */
+    void QueueJob(CJob *job);
 
     ManagerState GetState(void) const;
 
@@ -611,14 +675,25 @@ namespace PVR
     CCriticalSection                m_critSection;                 /*!< critical section for all changes to this class, except for changes to triggers */
     bool                            m_bFirstStart;                 /*!< true when the PVR manager was started first, false otherwise */
     bool                            m_bIsSwitchingChannels;        /*!< true while switching channels */
+    bool                            m_bEpgsCreated;                /*!< true if epg data for channels has been created */
     CGUIDialogProgressBarHandle *   m_progressHandle;              /*!< progress dialog that is displayed while the pvrmanager is loading */
 
     CCriticalSection                m_managerStateMutex;
     ManagerState                    m_managerState;
     CStopWatch                     *m_parentalTimer;
-    bool                            m_bOpenPVRWindow;
+    int                             m_openWindowId;
     std::map<std::string, std::string> m_outdatedAddons;
-    CEvent                             m_initialisedEvent;         /*!< triggered when the pvr manager initialised */
+    static int                      m_pvrWindowIds[10];
+  };
+
+  class CPVREpgsCreateJob : public CJob
+  {
+  public:
+    CPVREpgsCreateJob(void) {}
+    virtual ~CPVREpgsCreateJob() {}
+    virtual const char *GetType() const { return "pvr-create-epgs"; }
+
+    virtual bool DoWork();
   };
 
   class CPVRRecordingsUpdateJob : public CJob
@@ -661,16 +736,6 @@ namespace PVR
     virtual bool DoWork();
   };
 
-  class CPVRChannelSettingsSaveJob : public CJob
-  {
-  public:
-    CPVRChannelSettingsSaveJob(void) {}
-    virtual ~CPVRChannelSettingsSaveJob() {}
-    virtual const char *GetType() const { return "pvr-save-channelsettings"; }
-
-    bool DoWork();
-  };
-
   class CPVRChannelSwitchJob : public CJob
   {
   public:
@@ -682,5 +747,15 @@ namespace PVR
   private:
     CFileItem* m_previous;
     CFileItem* m_next;
+  };
+
+  class CPVRSearchMissingChannelIconsJob : public CJob
+  {
+  public:
+    CPVRSearchMissingChannelIconsJob(void) {}
+    virtual ~CPVRSearchMissingChannelIconsJob() {}
+    virtual const char *GetType() const { return "pvr-search-missing-channel-icons"; }
+
+    bool DoWork();
   };
 }

@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -79,7 +79,7 @@ private:
   std::vector<CCueTrack> m_Track;
 
   bool ReadNextLine(CStdString &strLine);
-  bool ExtractQuoteInfo(const CStdString &line, CStdString &quote);
+  CStdString ExtractInfo(const CStdString &line);
   int ExtractTimeFromIndex(const CStdString &index);
   int ExtractNumericInfo(const CStdString &info);
   bool ResolvePath(CStdString &strPath, const CStdString &strBase);

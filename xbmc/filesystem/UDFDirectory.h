@@ -1,9 +1,11 @@
 #ifndef UDF_DIRECTORY_H
 #define UDF_DIRECTORY_H
-
 /*
  *      Copyright (C) 2010 Team Boxee
  *      http://www.boxee.tv
+ *
+ *      Copyright (C) 2010-2013 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +22,6 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
-
 #include "IFileDirectory.h"
 
 namespace XFILE
@@ -31,9 +32,9 @@ class CUDFDirectory :
 public:
   CUDFDirectory(void);
   virtual ~CUDFDirectory(void);
-  virtual bool GetDirectory(const CStdString& strPath, CFileItemList &items);
-  virtual bool Exists(const char* strPath);
-  virtual bool ContainsFiles(const CStdString& strPath) { return true; }
+  virtual bool GetDirectory(const CURL& url, CFileItemList &items);
+  virtual bool Exists(const CURL& url);
+  virtual bool ContainsFiles(const CURL& url) { return true; }
 };
 }
 

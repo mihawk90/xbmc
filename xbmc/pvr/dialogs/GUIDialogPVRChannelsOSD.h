@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,12 +41,16 @@ namespace PVR
     virtual void Notify(const Observable &obs, const ObservableMessage msg);
 
   protected:
+    virtual void OnInitWindow();
+    virtual void OnDeinitWindow(int nextWindowID);
+    virtual void RestoreControlStates();
+    virtual void SaveControlStates();
+
     void CloseOrSelect(unsigned int iItem);
     void GotoChannel(int iItem);
     void ShowInfo(int item);
     void Clear();
     void Update();
-    void Update(bool selectPlayingChannel);
     CPVRChannelGroupPtr GetPlayingGroup();
     CGUIControl *GetFirstFocusableControl(int id);
 
@@ -55,9 +59,9 @@ namespace PVR
 
   private:
     CPVRChannelGroupPtr m_group;
-    std::map<int,int> m_groupSelectedItems;
-    void SetLastSelectedItem(int iGroupID);
-    int GetLastSelectedItem(int iGroupID) const;
+    std::map<int, std::string> m_groupSelectedItemPaths;
+    void SaveSelectedItemPath(int iGroupID);
+    std::string GetLastSelectedItemPath(int iGroupID) const;
   };
 }
 

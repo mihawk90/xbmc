@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ enum VideoSelectAction
   SELECT_ACTION_PLAYPART
 };
 
-class CGUIWindowVideoBase : public CGUIMediaWindow, public IBackgroundLoaderObserver, public IStreamDetailsObserver
+class CGUIWindowVideoBase : public CGUIMediaWindow, public IBackgroundLoaderObserver
 {
 public:
   CGUIWindowVideoBase(int id, const CStdString &xmlFile);
@@ -50,9 +50,6 @@ public:
 
   void AddToDatabase(int iItem);
   virtual void OnInfo(CFileItem* pItem, const ADDON::ScraperPtr& scraper);
-  virtual void OnStreamDetails(const CStreamDetails &details, const CStdString &strFileName, long lFileId);
-  static void MarkWatched(const CFileItemPtr &pItem, bool bMark);
-  static void UpdateVideoTitle(const CFileItem* pItem);
 
   /*! \brief Show dialog allowing selection of wanted playback item */
   static bool ShowPlaySelection(CFileItemPtr& item);
@@ -96,22 +93,21 @@ protected:
   void OnScan(const CStdString& strPath, bool scanAll = false);
   virtual void OnInitWindow();
   virtual void UpdateButtons();
-  virtual bool Update(const CStdString &strDirectory, bool updateFilterPath = true);
-  virtual bool GetDirectory(const CStdString &strDirectory, CFileItemList &items);
+  virtual bool Update(const std::string &strDirectory, bool updateFilterPath = true);
+  virtual bool GetDirectory(const std::string &strDirectory, CFileItemList &items);
   virtual void OnItemLoaded(CFileItem* pItem) {};
   virtual void GetGroupedItems(CFileItemList &items);
 
   virtual bool CheckFilterAdvanced(CFileItemList &items) const;
-  virtual bool CanContainFilter(const CStdString &strDirectory) const;
+  virtual bool CanContainFilter(const std::string &strDirectory) const;
 
   virtual void GetContextButtons(int itemNumber, CContextButtons &buttons);
-  void GetNonContextButtons(int itemNumber, CContextButtons &buttons);
   virtual bool OnContextButton(int itemNumber, CONTEXT_BUTTON button);
   virtual void OnQueueItem(int iItem);
   virtual void OnDeleteItem(CFileItemPtr pItem);
   virtual void OnDeleteItem(int iItem);
   virtual void DoSearch(const CStdString& strSearch, CFileItemList& items) {};
-  virtual CStdString GetStartFolder(const CStdString &dir);
+  virtual std::string GetStartFolder(const std::string &dir);
 
   bool OnClick(int iItem);
   bool OnSelect(int iItem);
@@ -132,9 +128,9 @@ protected:
   void PlayItem(int iItem);
   virtual bool OnPlayMedia(int iItem);
   virtual bool OnPlayAndQueueMedia(const CFileItemPtr &item);
-  void LoadPlayList(const CStdString& strPlayList, int iPlayList = PLAYLIST_VIDEO);
+  void LoadPlayList(const std::string& strPlayList, int iPlayList = PLAYLIST_VIDEO);
 
-  bool ShowIMDB(CFileItem *item, const ADDON::ScraperPtr& content);
+  bool ShowIMDB(CFileItem *item, const ADDON::ScraperPtr& content, bool fromDB);
 
   void AddItemToPlayList(const CFileItemPtr &pItem, CFileItemList &queuedItems);
 

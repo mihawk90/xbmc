@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -97,7 +97,7 @@ int CDVDOverlayCodecCC::Decode(DemuxPacket *pPacket)
     m_pCurrentOverlay->iPTSStopTime = 0LL;
 
     char test[64];
-    sprintf(test, "cc data : %"PRId64, pts);
+    sprintf(test, "cc data : %" PRId64, pts);
     CDVDOverlayText::CElementText* pText = new CDVDOverlayText::CElementText(test);
     m_pCurrentOverlay->AddElement(pText);
     return OC_OVERLAY;*/

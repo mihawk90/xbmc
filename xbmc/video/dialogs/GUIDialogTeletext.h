@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,4 +41,7 @@ protected:
   CBaseTexture*       m_pTxtTexture;      /* Texture info class to render to screen */
   CRect               m_vertCoords;       /* Coordinates of teletext field on screen */
   CTeletextDecoder    m_TextDecoder;      /* Decoding class for teletext code */
+
+private:
+  void SetCoordinates();
 };

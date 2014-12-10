@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ void CGUIDialogAccessPoints::OnInitWindow()
 
   m_accessPoints->Clear();
 
-  CStdString ifaceName(m_interfaceName);
+  std::string ifaceName(m_interfaceName);
   CNetworkInterface* iface = g_application.getNetwork().GetInterfaceByName(ifaceName);
   m_aps = iface->GetAccessPoints();
 
@@ -112,12 +112,12 @@ void CGUIDialogAccessPoints::OnInitWindow()
   OnMessage(msg);
 }
 
-void CGUIDialogAccessPoints::SetInterfaceName(CStdString interfaceName)
+void CGUIDialogAccessPoints::SetInterfaceName(std::string interfaceName)
 {
   m_interfaceName = interfaceName;
 }
 
-CStdString CGUIDialogAccessPoints::GetSelectedAccessPointEssId()
+std::string CGUIDialogAccessPoints::GetSelectedAccessPointEssId()
 {
   return m_selectedAPEssId;
 }

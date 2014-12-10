@@ -1,8 +1,7 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
- *
  *      Initial code sponsored by: Voddler Inc (voddler.com)
+ *      Copyright (C) 2005-2013 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -51,6 +50,7 @@ namespace OVERLAY {
     virtual COverlay* Acquire();
     virtual long      Release();
     virtual void      Render(SRenderState& state) = 0;
+    virtual void      PrepareRender() {};
 
     enum EType
     { TYPE_NONE
@@ -66,6 +66,7 @@ namespace OVERLAY {
 
     enum EPosition
     { POSITION_ABSOLUTE
+    , POSITION_ABSOLUTE_SCREEN
     , POSITION_RELATIVE
     } m_pos;
 
@@ -118,7 +119,7 @@ namespace OVERLAY {
     typedef std::vector<COverlay*>  COverlayV;
     typedef std::vector<SElement>   SElementV;
 
-    void      Render(COverlay* o);
+    void      Render(COverlay* o, float adjust_height);
     COverlay* Convert(CDVDOverlay* o, double pts);
     COverlay* Convert(CDVDOverlaySSA* o, double pts);
 

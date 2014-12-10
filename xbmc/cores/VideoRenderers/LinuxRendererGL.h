@@ -1,9 +1,6 @@
-#ifndef LINUXRENDERERGL_RENDERER
-#define LINUXRENDERERGL_RENDERER
-
 /*
  *      Copyright (C) 2007-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +18,8 @@
  *
  */
 
+#pragma once
+
 #include "system.h"
 
 #ifdef HAS_GL
@@ -33,18 +32,16 @@
 #include "RenderFormats.h"
 #include "guilib/GraphicContext.h"
 #include "BaseRenderer.h"
-#include "RenderFormats.h"
 
 #include "threads/Event.h"
 
 class CRenderCapture;
 
-class CVDPAU;
 class CBaseTexture;
 namespace Shaders { class BaseYUV2RGBShader; }
 namespace Shaders { class BaseVideoFilterShader; }
-namespace VAAPI   { struct CHolder; }
-
+namespace VAAPI   { class CVaapiRenderPicture; }
+namespace VDPAU   { class CVdpauRenderPicture; }
 
 #undef ALIGN
 #define ALIGN(value, alignment) (((value)+((alignment)-1))&~((alignment)-1))
@@ -114,8 +111,6 @@ extern YUVCOEF yuv_coef_bt709;
 extern YUVCOEF yuv_coef_ebu;
 extern YUVCOEF yuv_coef_smtp240m;
 
-class DllSwScale;
-
 class CLinuxRendererGL : public CBaseRenderer
 {
 public:
@@ -140,13 +135,13 @@ public:
   virtual void         ReleaseBuffer(int idx);
   virtual void         SetBufferSize(int numBuffers) { m_NumYV12Buffers = numBuffers; }
   virtual unsigned int GetMaxBufferSize() { return NUM_BUFFERS; }
-  virtual unsigned int GetProcessorSize();
+  virtual unsigned int GetOptimalBufferSize();
 
 #ifdef HAVE_LIBVDPAU
-  virtual void         AddProcessor(CVDPAU* vdpau, int index);
+  virtual void         AddProcessor(VDPAU::CVdpauRenderPicture* vdpau, int index);
 #endif
 #ifdef HAVE_LIBVA
-  virtual void         AddProcessor(VAAPI::CHolder& holder, int index);
+  virtual void         AddProcessor(VAAPI::CVaapiRenderPicture* vaapi, int index);
 #endif
 #ifdef TARGET_DARWIN
   virtual void         AddProcessor(struct __CVBuffer *cvBufferRef, int index);
@@ -178,35 +173,39 @@ protected:
   void UpdateVideoFilter();
 
   // textures
-  void (CLinuxRendererGL::*m_textureUpload)(int index);
+  bool (CLinuxRendererGL::*m_textureUpload)(int index);
   void (CLinuxRendererGL::*m_textureDelete)(int index);
   bool (CLinuxRendererGL::*m_textureCreate)(int index);
 
-  void UploadYV12Texture(int index);
+  bool UploadYV12Texture(int index);
   void DeleteYV12Texture(int index);
   bool CreateYV12Texture(int index);
 
-  void UploadNV12Texture(int index);
+  bool UploadNV12Texture(int index);
   void DeleteNV12Texture(int index);
   bool CreateNV12Texture(int index);
   
-  void UploadVDPAUTexture(int index);
+  bool UploadVDPAUTexture(int index);
   void DeleteVDPAUTexture(int index);
   bool CreateVDPAUTexture(int index);
 
-  void UploadVAAPITexture(int index);
+  bool UploadVDPAUTexture420(int index);
+  void DeleteVDPAUTexture420(int index);
+  bool CreateVDPAUTexture420(int index);
+
+  bool UploadVAAPITexture(int index);
   void DeleteVAAPITexture(int index);
   bool CreateVAAPITexture(int index);
 
-  void UploadCVRefTexture(int index);
+  bool UploadCVRefTexture(int index);
   void DeleteCVRefTexture(int index);
   bool CreateCVRefTexture(int index);
 
-  void UploadYUV422PackedTexture(int index);
+  bool UploadYUV422PackedTexture(int index);
   void DeleteYUV422PackedTexture(int index);
   bool CreateYUV422PackedTexture(int index);
 
-  void UploadRGBTexture(int index);
+  bool UploadRGBTexture(int index);
   void ToRGBFrame(YV12Image* im, unsigned flipIndexPlane, unsigned flipIndexBuf);
   void ToRGBFields(YV12Image* im, unsigned flipIndexPlaneTop, unsigned flipIndexPlaneBot, unsigned flipIndexBuf);
   void SetupRGBBuffer();
@@ -214,13 +213,12 @@ protected:
   void CalculateTextureSourceRects(int source, int num_planes);
 
   // renderers
-  void RenderMultiPass(int renderBuffer, int field);  // multi pass glsl renderer
-  void RenderToFBO(int renderBuffer, int field);
+  void RenderToFBO(int renderBuffer, int field, bool weave = false);
   void RenderFromFBO();
   void RenderSinglePass(int renderBuffer, int field); // single pass glsl renderer
   void RenderSoftware(int renderBuffer, int field);   // single pass s/w yuv2rgb renderer
-  void RenderVDPAU(int renderBuffer, int field);      // render using vdpau hardware
-  void RenderVAAPI(int renderBuffer, int field);      // render using vdpau hardware
+  void RenderRGB(int renderBuffer, int field);      // render using vdpau/vaapi hardware
+  void RenderProgressiveWeave(int renderBuffer, int field); // render using vdpau hardware
 
   struct
   {
@@ -236,7 +234,6 @@ protected:
   bool m_bValidated;
   std::vector<ERenderFormat> m_formats;
   bool m_bImageReady;
-  ERenderFormat m_format;
   GLenum m_textureTarget;
   unsigned short m_renderMethod;
   RenderQuality m_renderQuality;
@@ -280,10 +277,10 @@ protected:
     GLuint    pbo[MAX_PLANES];
 
 #ifdef HAVE_LIBVDPAU
-    CVDPAU*   vdpau;
+    VDPAU::CVdpauRenderPicture *vdpau;
 #endif
 #ifdef HAVE_LIBVA
-    VAAPI::CHolder& vaapi;
+    VAAPI::CVaapiRenderPicture *vaapi;
 #endif
 #ifdef TARGET_DARWIN_OSX
     struct __CVBuffer *cvBufferRef;
@@ -300,6 +297,7 @@ protected:
                 , unsigned width,  unsigned height
                 , int stride, int bpp, void* data, GLuint* pbo = NULL );
 
+  void GetPlaneTextureSize(YUVPLANE& plane);
 
   Shaders::BaseYUV2RGBShader     *m_pYUVShader;
   Shaders::BaseVideoFilterShader *m_pVideoFilterShader;
@@ -310,7 +308,6 @@ protected:
   float m_clearColour;
 
   // software scale library (fallback if required gl version is not available)
-  DllSwScale        *m_dllSwScale;
   BYTE              *m_rgbBuffer;  // if software scale is used, this will hold the result image
   unsigned int       m_rgbBufferSize;
   GLuint             m_rgbPbo;
@@ -354,6 +351,4 @@ inline int NP2( unsigned x ) {
     return ++x;
 #endif
 }
-#endif
-
 #endif

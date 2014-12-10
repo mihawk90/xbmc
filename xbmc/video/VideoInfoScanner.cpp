@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "NfoFile.h"
 #include "utils/RegExp.h"
 #include "utils/md5.h"
+#include "filesystem/MultiPathDirectory.h"
 #include "filesystem/StackDirectory.h"
 #include "VideoInfoDownloader.h"
 #include "GUIInfoManager.h"
@@ -77,10 +78,6 @@ namespace VIDEO
   {
     try
     {
-      unsigned int tick = XbmcThreads::SystemClockMillis();
-
-      m_database.Open();
-
       if (m_showDialog && !CSettings::Get().GetBool("videolibrary.backgroundupdate"))
       {
         CGUIDialogExtendedProgressBar* dialog =
@@ -89,10 +86,28 @@ namespace VIDEO
            m_handle = dialog->GetHandle(g_localizeStrings.Get(314));
       }
 
+      // check if we only need to perform a cleaning
+      if (m_bClean && m_pathsToScan.empty())
+      {
+        CleanDatabase(m_handle, NULL, false);
+
+        if (m_handle)
+          m_handle->MarkFinished();
+        m_handle = NULL;
+
+        m_bRunning = false;
+
+        return;
+      }
+
+      unsigned int tick = XbmcThreads::SystemClockMillis();
+
+      m_database.Open();
+
       m_bCanInterrupt = true;
 
       CLog::Log(LOGNOTICE, "VideoInfoScanner: Starting scan ..");
-      ANNOUNCEMENT::CAnnouncementManager::Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnScanStarted");
+      ANNOUNCEMENT::CAnnouncementManager::Get().Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnScanStarted");
 
       // Reset progress vars
       m_currentItem = 0;
@@ -122,7 +137,7 @@ namespace VIDEO
            * doesn't exist rather than a NAS being switched off.  A manual clean from settings
            * will still pick up and remove it though.
            */
-          CLog::Log(LOGWARNING, "%s directory '%s' does not exist - skipping scan%s.", __FUNCTION__, directory.c_str(), m_bClean ? " and clean" : "");
+          CLog::Log(LOGWARNING, "%s directory '%s' does not exist - skipping scan%s.", __FUNCTION__, CURL::GetRedacted(directory).c_str(), m_bClean ? " and clean" : "");
           m_pathsToScan.erase(m_pathsToScan.begin());
         }
         else if (!DoScan(directory))
@@ -152,7 +167,7 @@ namespace VIDEO
     }
     
     m_bRunning = false;
-    ANNOUNCEMENT::CAnnouncementManager::Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnScanFinished");
+    ANNOUNCEMENT::CAnnouncementManager::Get().Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnScanFinished");
 
     // we need to clear the videodb cache and update any active lists
     CUtil::DeleteVideoDatabaseDirectoryCache();
@@ -171,18 +186,35 @@ namespace VIDEO
     m_pathsToScan.clear();
     m_pathsToClean.clear();
 
-    if (strDirectory.IsEmpty())
+    m_database.Open();
+    if (strDirectory.empty())
     { // scan all paths in the database.  We do this by scanning all paths in the db, and crossing them off the list as
       // we go.
-      m_database.Open();
       m_database.GetPaths(m_pathsToScan);
-      m_database.Close();
     }
     else
-    {
-      m_pathsToScan.insert(strDirectory);
+    { // scan all the paths of this subtree that is in the database
+      vector< pair<int, string> > subpaths;
+      m_database.GetSubPaths(m_strStartDir, subpaths);
+      for (vector< pair<int, string> >::iterator it = subpaths.begin(); it < subpaths.end(); ++it)
+        m_pathsToScan.insert(it->second);
     }
+    m_database.Close();
     m_bClean = g_advancedSettings.m_bVideoLibraryCleanOnUpdate;
+
+    StopThread();
+    Create();
+    m_bRunning = true;
+  }
+
+  void CVideoInfoScanner::StartCleanDatabase()
+  {
+    m_strStartDir.clear();
+    m_scanAll = false;
+    m_pathsToScan.clear();
+    m_pathsToClean.clear();
+
+    m_bClean = true;
 
     StopThread();
     Create();
@@ -218,6 +250,12 @@ namespace VIDEO
     g_windowManager.SendThreadMessage(msg);
   }
 
+  bool CVideoInfoScanner::IsExcluded(const CStdString& strDirectory) const
+  {
+    CStdString noMediaFile = URIUtils::AddFileToFolder(strDirectory, ".nomedia");
+    return CFile::Exists(noMediaFile);
+  }
+
   bool CVideoInfoScanner::DoScan(const CStdString& strDirectory)
   {
     if (m_handle)
@@ -244,11 +282,17 @@ namespace VIDEO
     CONTENT_TYPE content = info ? info->Content() : CONTENT_NONE;
 
     // exclude folders that match our exclude regexps
-    CStdStringArray regexps = content == CONTENT_TVSHOWS ? g_advancedSettings.m_tvshowExcludeFromScanRegExps
+    const vector<string> &regexps = content == CONTENT_TVSHOWS ? g_advancedSettings.m_tvshowExcludeFromScanRegExps
                                                          : g_advancedSettings.m_moviesExcludeFromScanRegExps;
 
     if (CUtil::ExcludeFileOrFolder(strDirectory, regexps))
       return true;
+
+    if (IsExcluded(strDirectory))
+    {
+      CLog::Log(LOGWARNING, "Skipping item '%s' with '.nomedia' file in parent directory, it won't be added to the library.", CURL::GetRedacted(strDirectory).c_str());
+      return true;
+    }
 
     bool ignoreFolder = !m_scanAll && settings.noupdate;
     if (content == CONTENT_NONE || ignoreFolder)
@@ -260,51 +304,51 @@ namespace VIDEO
       if (m_handle)
       {
         int str = content == CONTENT_MOVIES ? 20317:20318;
-        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(str), info->Name().c_str()));
+        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(str).c_str(), info->Name().c_str()));
       }
 
-      CStdString fastHash = GetFastHash(strDirectory);
-      if (m_database.GetPathHash(strDirectory, dbHash) && !fastHash.IsEmpty() && fastHash == dbHash)
+      CStdString fastHash = GetFastHash(strDirectory, regexps);
+      if (m_database.GetPathHash(strDirectory, dbHash) && !fastHash.empty() && fastHash == dbHash)
       { // fast hashes match - no need to process anything
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' due to no change (fasthash)", strDirectory.c_str());
         hash = fastHash;
-        bSkip = true;
       }
-      if (!bSkip)
+      else
       { // need to fetch the folder
         CDirectory::GetDirectory(strDirectory, items, g_advancedSettings.m_videoExtensions);
         items.Stack();
-        // compute hash
-        GetPathHash(items, hash);
-        if (hash != dbHash && !hash.IsEmpty())
-        {
-          if (dbHash.IsEmpty())
-            CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning dir '%s' as not in the database", strDirectory.c_str());
-          else
-            CLog::Log(LOGDEBUG, "VideoInfoScanner: Rescanning dir '%s' due to change (%s != %s)", strDirectory.c_str(), dbHash.c_str(), hash.c_str());
-        }
+
+        // check whether to re-use previously computed fast hash
+        if (!CanFastHash(items, regexps) || fastHash.empty())
+          GetPathHash(items, hash);
         else
-        { // they're the same or the hash is empty (dir empty/dir not retrievable)
-          if (hash.IsEmpty() && !dbHash.IsEmpty())
-          {
-            CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' as it's empty or doesn't exist - adding to clean list", strDirectory.c_str());
-            m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-          }
-          else
-            CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' due to no change", strDirectory.c_str());
-          bSkip = true;
-          if (m_handle)
-            OnDirectoryScanned(strDirectory);
-        }
-        // update the hash to a fast hash if needed
-        if (CanFastHash(items) && !fastHash.IsEmpty())
           hash = fastHash;
+      }
+
+      if (hash == dbHash)
+      { // hash matches - skipping
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' due to no change%s", CURL::GetRedacted(strDirectory).c_str(), !fastHash.empty() ? " (fasthash)" : "");
+        bSkip = true;
+      }
+      else if (hash.empty())
+      { // directory empty or non-existent - add to clean list and skip
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' as it's empty or doesn't exist - adding to clean list", CURL::GetRedacted(strDirectory).c_str());
+        if (m_bClean)
+          m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+        bSkip = true;
+      }
+      else if (dbHash.empty())
+      { // new folder - scan
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning dir '%s' as not in the database", CURL::GetRedacted(strDirectory).c_str());
+      }
+      else
+      { // hash changed - rescan
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Rescanning dir '%s' due to change (%s != %s)", CURL::GetRedacted(strDirectory).c_str(), dbHash.c_str(), hash.c_str());
       }
     }
     else if (content == CONTENT_TVSHOWS)
     {
       if (m_handle)
-        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(20319), info->Name().c_str()));
+        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(20319).c_str(), info->Name().c_str()));
 
       if (foundDirectly && !settings.parent_name_root)
       {
@@ -337,14 +381,16 @@ namespace VIDEO
         if (!m_bStop && (content == CONTENT_MOVIES || content == CONTENT_MUSICVIDEOS))
         {
           m_database.SetPathHash(strDirectory, hash);
-          m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-          CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding information from dir %s", strDirectory.c_str());
+          if (m_bClean)
+            m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+          CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding information from dir %s", CURL::GetRedacted(strDirectory).c_str());
         }
       }
       else
       {
-        m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: No (new) information was found in dir %s", strDirectory.c_str());
+        if (m_bClean)
+          m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: No (new) information was found in dir %s", CURL::GetRedacted(strDirectory).c_str());
       }
     }
     else if (hash != dbHash && (content == CONTENT_MOVIES || content == CONTENT_MUSICVIDEOS))
@@ -427,7 +473,7 @@ namespace VIDEO
         ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
       else
       {
-        CLog::Log(LOGERROR, "VideoInfoScanner: Unknown content type %d (%s)", info2->Content(), pItem->GetPath().c_str());
+        CLog::Log(LOGERROR, "VideoInfoScanner: Unknown content type %d (%s)", info2->Content(), CURL::GetRedacted(pItem->GetPath()).c_str());
         FoundSomeInfo = false;
         break;
       }
@@ -439,12 +485,14 @@ namespace VIDEO
       if (ret == INFO_ADDED || ret == INFO_HAVE_ALREADY)
         FoundSomeInfo = true;
       else if (ret == INFO_NOT_FOUND)
-        CLog::Log(LOGWARNING, "No information found for item '%s', it won't be added to the library.", pItem->GetPath().c_str());
+      {
+        CLog::Log(LOGWARNING, "No information found for item '%s', it won't be added to the library.", CURL::GetRedacted(pItem->GetPath()).c_str());
+      }
 
       pURL = NULL;
 
       // Keep track of directories we've seen
-      if (pItem->m_bIsFolder)
+      if (m_bClean && pItem->m_bIsFolder)
         seenPaths.push_back(m_database.GetPathId(pItem->GetPath()));
     }
 
@@ -473,8 +521,7 @@ namespace VIDEO
       idTvShow = m_database.GetTvShowId(pItem->GetPath());
     else
     {
-      CStdString strPath;
-      URIUtils::GetDirectory(pItem->GetPath(),strPath);
+      CStdString strPath = URIUtils::GetDirectory(pItem->GetPath());
       idTvShow = m_database.GetTvShowId(strPath);
     }
     if (idTvShow > -1 && (fetchEpisodes || !pItem->m_bIsFolder))
@@ -496,13 +543,6 @@ namespace VIDEO
     // handle .nfo files
     if (useLocal)
       result = CheckForNFOFile(pItem, bDirNames, info2, scrUrl);
-    if (result != CNfoFile::NO_NFO && result != CNfoFile::ERROR_NFO)
-    { // check for preconfigured scraper; if found, overwrite with interpreted scraper (from Nfofile)
-      // but keep current scan settings
-      SScanSettings settings;
-      if (m_database.GetScraperForPath(pItem->GetPath(), settings))
-        m_database.SetScraperForPath(pItem->GetPath(), info2, settings);
-    }
     if (result == CNfoFile::FULL_NFO)
     {
       pItem->GetVideoInfoTag()->Reset();
@@ -647,7 +687,8 @@ namespace VIDEO
   {
     // enumerate episodes
     EPISODELIST files;
-    EnumerateSeriesFolder(item, files);
+    if (!EnumerateSeriesFolder(item, files))
+      return INFO_HAVE_ALREADY;
     if (files.size() == 0) // no update or no files
       return INFO_NOT_NEEDED;
 
@@ -659,32 +700,72 @@ namespace VIDEO
     return OnProcessSeriesFolder(files, scraper, useLocal, showInfo, progress);
   }
 
-  void CVideoInfoScanner::EnumerateSeriesFolder(CFileItem* item, EPISODELIST& episodeList)
+  bool CVideoInfoScanner::EnumerateSeriesFolder(CFileItem* item, EPISODELIST& episodeList)
   {
     CFileItemList items;
+    const vector<string> &regexps = g_advancedSettings.m_tvshowExcludeFromScanRegExps;
+
+    bool bSkip = false;
 
     if (item->m_bIsFolder)
     {
-      CUtil::GetRecursiveListing(item->GetPath(), items, g_advancedSettings.m_videoExtensions, true);
+      /*
+       * Note: DoScan() will not remove this path as it's not recursing for tvshows.
+       * Remove this path from the list we're processing in order to avoid hitting
+       * it twice in the main loop.
+       */
+      set<CStdString>::iterator it = m_pathsToScan.find(item->GetPath());
+      if (it != m_pathsToScan.end())
+        m_pathsToScan.erase(it);
+
       CStdString hash, dbHash;
-      int numFilesInFolder = GetPathHash(items, hash);
-
-      if (m_database.GetPathHash(item->GetPath(), dbHash) && dbHash == hash)
+      hash = GetRecursiveFastHash(item->GetPath(), regexps);
+      if (m_database.GetPathHash(item->GetPath(), dbHash) && !hash.empty() && dbHash == hash)
       {
-        m_currentItem += numFilesInFolder;
+        // fast hashes match - no need to process anything
+        bSkip = true;
+      }
 
+      // fast hash cannot be computed or we need to rescan. fetch the listing.
+      if (!bSkip)
+      {
+        int flags = DIR_FLAG_DEFAULTS;
+        if (!hash.empty())
+          flags |= DIR_FLAG_NO_FILE_INFO;
+
+        CUtil::GetRecursiveListing(item->GetPath(), items, g_advancedSettings.m_videoExtensions, flags);
+
+        // fast hash failed - compute slow one
+        if (hash.empty())
+        {
+          GetPathHash(items, hash);
+          if (dbHash == hash)
+          {
+            // slow hashes match - no need to process anything
+            bSkip = true;
+          }
+        }
+      }
+
+      if (bSkip)
+      {
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '%s' due to no change", CURL::GetRedacted(item->GetPath()).c_str());
         // update our dialog with our progress
         if (m_handle)
-        {
-          if (m_itemCount>0)
-            m_handle->SetPercentage(m_currentItem*100.f/m_itemCount);
-
           OnDirectoryScanned(item->GetPath());
-        }
-        return;
+        return false;
       }
-      m_pathsToClean.insert(m_database.GetPathId(item->GetPath()));
-      m_database.GetPathsForTvShow(m_database.GetTvShowId(item->GetPath()), m_pathsToClean);
+
+      if (dbHash.empty())
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning dir '%s' as not in the database", CURL::GetRedacted(item->GetPath()).c_str());
+      else
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Rescanning dir '%s' due to change (%s != %s)", CURL::GetRedacted(item->GetPath()).c_str(), dbHash.c_str(), hash.c_str());
+
+      if (m_bClean)
+      {
+        m_pathsToClean.insert(m_database.GetPathId(item->GetPath()));
+        m_database.GetPathsForTvShow(m_database.GetTvShowId(item->GetPath()), m_pathsToClean);
+      }
       item->SetProperty("hash", hash);
     }
     else
@@ -704,19 +785,21 @@ namespace VIDEO
     */
 
     // since we're doing this now anyway, should other items be stacked?
-    items.Sort(SORT_METHOD_FULLPATH, SortOrderAscending);
+    items.Sort(SortByPath, SortOrderAscending);
     int x = 0;
     while (x < items.Size())
     {
       if (items[x]->m_bIsFolder)
+      {
+        x++;
         continue;
-
+      }
 
       CStdString strPathX, strFileX;
       URIUtils::Split(items[x]->GetPath(), strPathX, strFileX);
       //CLog::Log(LOGDEBUG,"%i:%s:%s", x, strPathX.c_str(), strFileX.c_str());
 
-      int y = x + 1;
+      const int y = x + 1;
       if (strFileX.Equals("VIDEO_TS.IFO"))
       {
         while (y < items.Size())
@@ -737,18 +820,15 @@ namespace VIDEO
             break;
         }
       }
-      x = y;
+      x++;
     }
 
     // enumerate
-    CStdStringArray regexps = g_advancedSettings.m_tvshowExcludeFromScanRegExps;
-
     for (int i=0;i<items.Size();++i)
     {
       if (items[i]->m_bIsFolder)
         continue;
-      CStdString strPath;
-      URIUtils::GetDirectory(items[i]->GetPath(), strPath);
+      CStdString strPath = URIUtils::GetDirectory(items[i]->GetPath());
       URIUtils::RemoveSlashAtEnd(strPath); // want no slash for the test that follows
 
       if (URIUtils::GetFileName(strPath).Equals("sample"))
@@ -767,12 +847,9 @@ namespace VIDEO
         continue;
 
       if (!EnumerateEpisodeItem(items[i].get(), episodeList))
-      {
-        CStdString decode(items[i]->GetPath());
-        CURL::Decode(decode);
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Could not enumerate file %s", decode.c_str());
-      }
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Could not enumerate file %s", CURL::GetRedacted(CURL::Decode(items[i]->GetPath())).c_str());
     }
+    return true;
   }
 
   bool CVideoInfoScanner::ProcessItemByVideoInfoTag(const CFileItem *item, EPISODELIST &episodeList)
@@ -794,7 +871,7 @@ namespace VIDEO
       episode.isFolder = false;
       episodeList.push_back(episode);
       CLog::Log(LOGDEBUG, "%s - found match for: %s. Season %d, Episode %d", __FUNCTION__,
-                episode.strPath.c_str(), episode.iSeason, episode.iEpisode);
+                CURL::GetRedacted(episode.strPath).c_str(), episode.iSeason, episode.iEpisode);
       return true;
     }
 
@@ -819,7 +896,7 @@ namespace VIDEO
       episode.cDate = item->GetVideoInfoTag()->m_firstAired;
       episodeList.push_back(episode);
       CLog::Log(LOGDEBUG, "%s - found match for: '%s', firstAired: '%s' = '%s', title: '%s'",
-        __FUNCTION__, episode.strPath.c_str(), tag->m_firstAired.GetAsDBDateTime().c_str(),
+        __FUNCTION__, CURL::GetRedacted(episode.strPath).c_str(), tag->m_firstAired.GetAsDBDateTime().c_str(),
                 episode.cDate.GetAsLocalizedDate().c_str(), episode.strTitle.c_str());
       return true;
     }
@@ -828,7 +905,7 @@ namespace VIDEO
      * Next preference is the episode title. If it exists use that for matching the TV Show
      * information.
      */
-    if (!tag->m_strTitle.IsEmpty())
+    if (!tag->m_strTitle.empty())
     {
       EPISODE episode;
       episode.strPath = item->GetPath();
@@ -841,7 +918,7 @@ namespace VIDEO
       episode.iEpisode = -1;
       episodeList.push_back(episode);
       CLog::Log(LOGDEBUG,"%s - found match for: '%s', title: '%s'", __FUNCTION__,
-                episode.strPath.c_str(), episode.strTitle.c_str());
+                CURL::GetRedacted(episode.strPath).c_str(), episode.strTitle.c_str());
       return true;
     }
 
@@ -853,7 +930,7 @@ namespace VIDEO
     if (tag->m_iSeason == 0 && tag->m_iEpisode == 0)
     {
       CLog::Log(LOGDEBUG,"%s - found exclusion match for: %s. Both Season and Episode are 0. Item will be ignored for scanning.",
-                __FUNCTION__, item->GetPath().c_str());
+                __FUNCTION__, CURL::GetRedacted(item->GetPath()).c_str());
       return true;
     }
 
@@ -866,12 +943,11 @@ namespace VIDEO
 
     CStdString strLabel=item->GetPath();
     // URLDecode in case an episode is on a http/https/dav/davs:// source and URL-encoded like foo%201x01%20bar.avi
-    CURL::Decode(strLabel);
-    strLabel.MakeLower();
+    strLabel = CURL::Decode(strLabel);
 
     for (unsigned int i=0;i<expression.size();++i)
     {
-      CRegExp reg;
+      CRegExp reg(true, CRegExp::autoUtf8);
       if (!reg.RegComp(expression[i].regexp))
         continue;
 
@@ -895,7 +971,7 @@ namespace VIDEO
         if (!GetAirDateFromRegExp(reg, episode))
           continue;
 
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found date based match %s (%s) [%s]", strLabel.c_str(),
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found date based match %s (%s) [%s]", CURL::GetRedacted(strLabel).c_str(),
                   episode.cDate.GetAsLocalizedDate().c_str(), expression[i].regexp.c_str());
       }
       else
@@ -903,13 +979,13 @@ namespace VIDEO
         if (!GetEpisodeAndSeasonFromRegExp(reg, episode, defaultSeason))
           continue;
 
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found episode match %s (s%ie%i) [%s]", strLabel.c_str(),
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found episode match %s (s%ie%i) [%s]", CURL::GetRedacted(strLabel).c_str(),
                   episode.iSeason, episode.iEpisode, expression[i].regexp.c_str());
       }
 
       // Grab the remainder from first regexp run
       // as second run might modify or empty it.
-      std::string remainder = reg.GetReplaceString("\\3");
+      std::string remainder(reg.GetMatch(3));
 
       /*
        * Check if the files base path is a dedicated folder that contains
@@ -940,7 +1016,7 @@ namespace VIDEO
       // add what we found by now
       episodeList.push_back(episode);
 
-      CRegExp reg2;
+      CRegExp reg2(true, CRegExp::autoUtf8);
       // check the remainder of the string for any further episodes.
       if (!byDate && reg2.RegComp(g_advancedSettings.m_tvshowMultiPartEnumRegExp))
       {
@@ -959,13 +1035,13 @@ namespace VIDEO
                       g_advancedSettings.m_tvshowMultiPartEnumRegExp.c_str());
 
             episodeList.push_back(episode);
-            remainder = reg.GetReplaceString("\\3");
+            remainder = reg.GetMatch(3);
             offset = 0;
           }
           else if (((regexp2pos < regexppos) && regexp2pos != -1) ||
                    (regexp2pos >= 0 && regexppos == -1))
           {
-            episode.iEpisode = atoi(reg2.GetReplaceString("\\1").c_str());
+            episode.iEpisode = atoi(reg2.GetMatch(1).c_str());
             CLog::Log(LOGDEBUG, "VideoInfoScanner: Adding multipart episode %u [%s]",
                       episode.iEpisode, g_advancedSettings.m_tvshowMultiPartEnumRegExp.c_str());
             episodeList.push_back(episode);
@@ -980,8 +1056,8 @@ namespace VIDEO
 
   bool CVideoInfoScanner::GetEpisodeAndSeasonFromRegExp(CRegExp &reg, EPISODE &episodeInfo, int defaultSeason)
   {
-    std::string season = reg.GetReplaceString("\\1");
-    std::string episode = reg.GetReplaceString("\\2");
+    std::string season(reg.GetMatch(1));
+    std::string episode(reg.GetMatch(2));
 
     if (!season.empty() || !episode.empty())
     {
@@ -1017,9 +1093,9 @@ namespace VIDEO
 
   bool CVideoInfoScanner::GetAirDateFromRegExp(CRegExp &reg, EPISODE &episodeInfo)
   {
-    std::string param1 = reg.GetReplaceString("\\1");
-    std::string param2 = reg.GetReplaceString("\\2");
-    std::string param3 = reg.GetReplaceString("\\3");
+    std::string param1(reg.GetMatch(1));
+    std::string param2(reg.GetMatch(2));
+    std::string param3(reg.GetMatch(3));
 
     if (!param1.empty() && !param2.empty() && !param3.empty())
     {
@@ -1057,7 +1133,7 @@ namespace VIDEO
       art["thumb"] = "";
 
     CVideoInfoTag &movieDetails = *pItem->GetVideoInfoTag();
-    if (movieDetails.m_basePath.IsEmpty())
+    if (movieDetails.m_basePath.empty())
       movieDetails.m_basePath = pItem->GetBaseMoviePath(videoFolder);
     movieDetails.m_parentPathID = m_database.AddPath(URIUtils::GetParentPath(movieDetails.m_basePath));
 
@@ -1070,22 +1146,24 @@ namespace VIDEO
 
     if (showInfo && content == CONTENT_TVSHOWS)
     {
-      strTitle.Format("%s - %ix%i - %s", showInfo->m_strTitle.c_str(), movieDetails.m_iSeason, movieDetails.m_iEpisode, strTitle.c_str());
+      strTitle = StringUtils::Format("%s - %ix%i - %s", showInfo->m_strTitle.c_str(), movieDetails.m_iSeason, movieDetails.m_iEpisode, strTitle.c_str());
     }
 
-    CLog::Log(LOGDEBUG, "VideoInfoScanner: Adding new item to %s:%s", TranslateContent(content).c_str(), pItem->GetPath().c_str());
+    std::string redactPath(CURL::GetRedacted(CURL::Decode(pItem->GetPath())));
+
+    CLog::Log(LOGDEBUG, "VideoInfoScanner: Adding new item to %s:%s", TranslateContent(content).c_str(), redactPath.c_str());
     long lResult = -1;
 
     if (content == CONTENT_MOVIES)
     {
       // find local trailer first
       CStdString strTrailer = pItem->FindTrailer();
-      if (!strTrailer.IsEmpty())
+      if (!strTrailer.empty())
         movieDetails.m_strTrailer = strTrailer;
 
       lResult = m_database.SetDetailsForMovie(pItem->GetPath(), movieDetails, art);
       movieDetails.m_iDbId = lResult;
-      movieDetails.m_type = "movie";
+      movieDetails.m_type = MediaTypeMovie;
 
       // setup links to shows if the linked shows are in the db
       for (unsigned int i=0; i < movieDetails.m_showLink.size(); ++i)
@@ -1105,14 +1183,26 @@ namespace VIDEO
         map<int, map<string, string> > seasonArt;
         if (!libraryImport)
         { // get and cache season thumbs
-          GetSeasonThumbs(movieDetails, seasonArt, CVideoThumbLoader::GetArtTypes("season"), useLocal);
+          GetSeasonThumbs(movieDetails, seasonArt, CVideoThumbLoader::GetArtTypes(MediaTypeSeason), useLocal);
           for (map<int, map<string, string> >::iterator i = seasonArt.begin(); i != seasonArt.end(); ++i)
             for (map<string, string>::iterator j = i->second.begin(); j != i->second.end(); ++j)
               CTextureCache::Get().BackgroundCacheImage(j->second);
         }
-        lResult = m_database.SetDetailsForTvShow(pItem->GetPath(), movieDetails, art, seasonArt);
+
+        /*
+         multipaths are not stored in the database, so in the case we have one,
+         we split the paths, and compute the parent paths in each case.
+         */
+        vector<string> multipath;
+        if (!URIUtils::IsMultiPath(pItem->GetPath()) || !CMultiPathDirectory::GetPaths(pItem->GetPath(), multipath))
+          multipath.push_back(pItem->GetPath());
+        vector< pair<string, string> > paths;
+        for (vector<string>::const_iterator i = multipath.begin(); i != multipath.end(); ++i)
+          paths.push_back(make_pair(*i, URIUtils::GetParentPath(*i)));
+
+        lResult = m_database.SetDetailsForTvShow(paths, movieDetails, art, seasonArt);
         movieDetails.m_iDbId = lResult;
-        movieDetails.m_type = "tvshow";
+        movieDetails.m_type = MediaTypeTvShow;
       }
       else
       {
@@ -1122,7 +1212,7 @@ namespace VIDEO
         int idEpisode = m_database.AddEpisode(idShow, pItem->GetPath());
         lResult = m_database.SetDetailsForEpisode(pItem->GetPath(), movieDetails, art, idShow, idEpisode);
         movieDetails.m_iDbId = lResult;
-        movieDetails.m_type = "episode";
+        movieDetails.m_type = MediaTypeEpisode;
         movieDetails.m_strShowTitle = showInfo ? showInfo->m_strTitle : "";
         if (movieDetails.m_fEpBookmark > 0)
         {
@@ -1139,7 +1229,7 @@ namespace VIDEO
     {
       lResult = m_database.SetDetailsForMusicVideo(pItem->GetPath(), movieDetails, art);
       movieDetails.m_iDbId = lResult;
-      movieDetails.m_type = "musicvideo";
+      movieDetails.m_type = MediaTypeMusicVideo;
     }
 
     if (g_advancedSettings.m_bVideoLibraryImportWatchedState || libraryImport)
@@ -1152,7 +1242,10 @@ namespace VIDEO
     m_database.Close();
 
     CFileItemPtr itemCopy = CFileItemPtr(new CFileItem(*pItem));
-    ANNOUNCEMENT::CAnnouncementManager::Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnUpdate", itemCopy);
+    CVariant data;
+    if (IsScanning())
+      data["transaction"] = true;
+    ANNOUNCEMENT::CAnnouncementManager::Get().Announce(ANNOUNCEMENT::VideoLibrary, "xbmc", "OnUpdate", itemCopy, data);
     return lResult;
   }
 
@@ -1161,11 +1254,11 @@ namespace VIDEO
     switch (content)
     {
       case CONTENT_MOVIES:
-        return "movie";
+        return MediaTypeMovie;
       case CONTENT_MUSICVIDEOS:
-        return "musicvideo";
+        return MediaTypeMusicVideo;
       case CONTENT_TVSHOWS:
-        return folder ? "tvshow" : "episode";
+        return folder ? MediaTypeTvShow : MediaTypeEpisode;
       default:
         return "";
     }
@@ -1281,8 +1374,7 @@ namespace VIDEO
             thumb.find("/") == string::npos &&
             thumb.find("\\") == string::npos)
         {
-          CStdString strPath;
-          URIUtils::GetDirectory(pItem->GetPath(), strPath);
+          CStdString strPath = URIUtils::GetDirectory(pItem->GetPath());
           thumb = URIUtils::AddFileToFolder(strPath, thumb);
         }
       }
@@ -1292,6 +1384,8 @@ namespace VIDEO
 
   std::string CVideoInfoScanner::GetFanart(CFileItem *pItem, bool useLocal)
   {
+    if (!pItem)
+      return "";
     std::string fanart = pItem->GetArt("fanart");
     if (fanart.empty() && useLocal)
       fanart = pItem->FindLocalArt("fanart.jpg", true);
@@ -1365,7 +1459,7 @@ namespace VIDEO
       if (!hasEpisodeGuide)
       {
         // fetch episode guide
-        if (!showInfo.m_strEpisodeGuide.IsEmpty())
+        if (!showInfo.m_strEpisodeGuide.empty())
         {
           CScraperUrl url;
           url.ParseEpisodeGuide(showInfo.m_strEpisodeGuide);
@@ -1388,28 +1482,37 @@ namespace VIDEO
       {
         CLog::Log(LOGERROR, "VideoInfoScanner: Asked to lookup episode %s"
                             " online, but we have no episode guide. Check your tvshow.nfo and make"
-                            " sure the <episodeguide> tag is in place.", file->strPath.c_str());
+                            " sure the <episodeguide> tag is in place.", CURL::GetRedacted(file->strPath).c_str());
         continue;
       }
 
       EPISODE key(file->iSeason, file->iEpisode, file->iSubepisode);
+      EPISODE backupkey(file->iSeason, file->iEpisode, 0);
       bool bFound = false;
       EPISODELIST::iterator guide = episodes.begin();;
       EPISODELIST matches;
 
       for (; guide != episodes.end(); ++guide )
       {
-        if ((file->iEpisode!=-1) && (file->iSeason!=-1) && (key==*guide))
+        if ((file->iEpisode!=-1) && (file->iSeason!=-1))
         {
-          bFound = true;
-          break;
+          if (key==*guide)
+          {
+            bFound = true;
+            break;
+          }
+          else if ((file->iSubepisode!=0) && (backupkey==*guide))
+          {
+            matches.push_back(*guide);
+            continue;
+          }
         }
         if (file->cDate.IsValid() && guide->cDate.IsValid() && file->cDate==guide->cDate)
         {
           matches.push_back(*guide);
           continue;
         }
-        if (!guide->cScraperUrl.strTitle.IsEmpty() && guide->cScraperUrl.strTitle.CompareNoCase(file->strTitle.c_str()) == 0)
+        if (!guide->cScraperUrl.strTitle.empty() && StringUtils::EqualsNoCase(guide->cScraperUrl.strTitle, file->strTitle))
         {
           bFound = true;
           break;
@@ -1442,9 +1545,12 @@ namespace VIDEO
           else // Multiple matches found. Use fuzzy match on the title with already matched episodes to pick the best.
             candidates = &matches;
 
-          CStdStringArray titles;
+          vector<string> titles;
           for (guide = candidates->begin(); guide != candidates->end(); ++guide)
-            titles.push_back(guide->cScraperUrl.strTitle.ToLower());
+          {
+            StringUtils::ToLower(guide->cScraperUrl.strTitle);
+            titles.push_back(guide->cScraperUrl.strTitle);
+          }
 
           double matchscore;
           std::string loweredTitle(file->strTitle);
@@ -1497,15 +1603,13 @@ namespace VIDEO
       {
         CFileItem item2(*item);
         CURL url(item->GetPath());
-        CStdString strPath;
-        URIUtils::GetDirectory(url.GetHostName(), strPath);
+        CStdString strPath = URIUtils::GetDirectory(url.GetHostName());
         item2.SetPath(URIUtils::AddFileToFolder(strPath, URIUtils::GetFileName(item->GetPath())));
         return GetnfoFile(&item2, bGrabAny);
       }
 
       // grab the folder path
-      CStdString strPath;
-      URIUtils::GetDirectory(item->GetPath(), strPath);
+      CStdString strPath = URIUtils::GetDirectory(item->GetPath());
 
       if (bGrabAny && !item->IsStack())
       { // looking up by folder name - movie.nfo takes priority - but not for stacked items (handled below)
@@ -1524,7 +1628,7 @@ namespace VIDEO
         item2.SetPath(firstFile);
         nfoFile = GetnfoFile(&item2, bGrabAny);
         // else try .nfo file matching stacked title
-        if (nfoFile.IsEmpty())
+        if (nfoFile.empty())
         {
           CStdString stackedTitlePath = dir.GetStackedTitlePath(item->GetPath());
           item2.SetPath(stackedTitlePath);
@@ -1542,36 +1646,39 @@ namespace VIDEO
       }
 
       // test file existence
-      if (!nfoFile.IsEmpty() && !CFile::Exists(nfoFile))
-        nfoFile.Empty();
+      if (!nfoFile.empty() && !CFile::Exists(nfoFile))
+        nfoFile.clear();
 
-      if (nfoFile.IsEmpty()) // final attempt - strip off any cd1 folders
+      if (nfoFile.empty()) // final attempt - strip off any cd1 folders
       {
         URIUtils::RemoveSlashAtEnd(strPath); // need no slash for the check that follows
         CFileItem item2;
-        if (strPath.Mid(strPath.size()-3).Equals("cd1"))
+        if (StringUtils::EndsWithNoCase(strPath, "cd1"))
         {
-          strPath = strPath.Mid(0,strPath.size()-3);
+          strPath.erase(strPath.size() - 3);
           item2.SetPath(URIUtils::AddFileToFolder(strPath, URIUtils::GetFileName(item->GetPath())));
           return GetnfoFile(&item2, bGrabAny);
         }
       }
 
-      if (nfoFile.IsEmpty() && item->IsOpticalMediaFile())
+      if (nfoFile.empty() && item->IsOpticalMediaFile())
       {
         CFileItem parentDirectory(item->GetLocalMetadataPath(), true);
         nfoFile = GetnfoFile(&parentDirectory, true);
       }
     }
     // folders (or stacked dvds) can take any nfo file if there's a unique one
-    if (item->m_bIsFolder || item->IsOpticalMediaFile() || (bGrabAny && nfoFile.IsEmpty()))
+    if (item->m_bIsFolder || item->IsOpticalMediaFile() || (bGrabAny && nfoFile.empty()))
     {
       // see if there is a unique nfo file in this folder, and if so, use that
       CFileItemList items;
       CDirectory dir;
-      CStdString strPath = item->GetPath();
-      if (!item->m_bIsFolder)
-        URIUtils::GetDirectory(item->GetPath(), strPath);
+      CStdString strPath;
+      if (item->m_bIsFolder)
+        strPath = item->GetPath();
+      else
+        strPath = URIUtils::GetDirectory(item->GetPath());
+
       if (dir.GetDirectory(strPath, items, ".nfo") && items.Size())
       {
         int numNFO = -1;
@@ -1600,7 +1707,7 @@ namespace VIDEO
   {
     CVideoInfoTag movieDetails;
 
-    if (m_handle && !url.strTitle.IsEmpty())
+    if (m_handle && !url.strTitle.empty())
       m_handle->SetText(url.strTitle);
 
     CVideoInfoDownloader imdb(scraper);
@@ -1611,7 +1718,7 @@ namespace VIDEO
       if (nfoFile)
         nfoFile->GetDetails(movieDetails,NULL,true);
 
-      if (m_handle && url.strTitle.IsEmpty())
+      if (m_handle && url.strTitle.empty())
         m_handle->SetText(movieDetails.m_strTitle);
 
       if (pDialog)
@@ -1629,10 +1736,11 @@ namespace VIDEO
   void CVideoInfoScanner::ApplyThumbToFolder(const CStdString &folder, const CStdString &imdbThumb)
   {
     // copy icon to folder also;
-    if (!imdbThumb.IsEmpty())
+    if (!imdbThumb.empty())
     {
       CFileItem folderItem(folder, true);
-      CThumbLoader::SetCachedImage(folderItem, "thumb", imdbThumb);
+      CThumbLoader loader;
+      loader.SetCachedImage(folderItem, "thumb", imdbThumb);
     }
   }
 
@@ -1652,22 +1760,27 @@ namespace VIDEO
       if (pItem->IsVideo() && !pItem->IsPlayList() && !pItem->IsNFO())
         count++;
     }
-    md5state.getDigest(hash);
+    hash = md5state.getDigest();
     return count;
   }
 
-  bool CVideoInfoScanner::CanFastHash(const CFileItemList &items) const
+  bool CVideoInfoScanner::CanFastHash(const CFileItemList &items, const vector<string> &excludes) const
   {
-    // TODO: Probably should account for excluded folders here (eg samples), though that then
-    //       introduces possible problems if the user then changes the exclude regexps and
-    //       expects excluded folders that are inside a fast-hashed folder to then be picked
-    //       up. The chances that the user has a folder which contains only excluded folders
-    //       where some of those folders should be scanned recursively is pretty small.
-    return items.GetFolderCount() == 0;
+    for (int i = 0; i < items.Size(); ++i)
+    {
+      if (items[i]->m_bIsFolder && !CUtil::ExcludeFileOrFolder(items[i]->GetPath(), excludes))
+        return false;
+    }
+    return true;
   }
 
-  CStdString CVideoInfoScanner::GetFastHash(const CStdString &directory) const
+  CStdString CVideoInfoScanner::GetFastHash(const CStdString &directory, const vector<string> &excludes) const
   {
+    XBMC::XBMC_MD5 md5state;
+
+    if (excludes.size())
+      md5state.append(StringUtils::Join(excludes, "|"));
+
     struct __stat64 buffer;
     if (XFILE::CFile::Stat(directory, &buffer) == 0)
     {
@@ -1676,10 +1789,45 @@ namespace VIDEO
         time = buffer.st_ctime;
       if (time)
       {
-        CStdString hash;
-        hash.Format("fast%"PRId64, time);
-        return hash;
+        md5state.append((unsigned char *)&time, sizeof(time));
+        return md5state.getDigest();
       }
+    }
+    return "";
+  }
+
+  CStdString CVideoInfoScanner::GetRecursiveFastHash(const CStdString &directory, const vector<string> &excludes) const
+  {
+    CFileItemList items;
+    items.Add(CFileItemPtr(new CFileItem(directory, true)));
+    CUtil::GetRecursiveDirsListing(directory, items, DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO);
+
+    XBMC::XBMC_MD5 md5state;
+
+    if (excludes.size())
+      md5state.append(StringUtils::Join(excludes, "|"));
+
+    int64_t time = 0;
+    for (int i=0; i < items.Size(); ++i)
+    {
+      int64_t stat_time = 0;
+      struct __stat64 buffer;
+      if (XFILE::CFile::Stat(items[i]->GetPath(), &buffer) == 0)
+      {
+        // TODO: some filesystems may return the mtime/ctime inline, in which case this is
+        // unnecessarily expensive. Consider supporting Stat() in our directory cache?
+        stat_time = buffer.st_mtime ? buffer.st_mtime : buffer.st_ctime;
+        time += stat_time;
+      }
+
+      if (!stat_time)
+        return "";
+    }
+
+    if (time)
+    {
+      md5state.append((unsigned char *)&time, sizeof(time));
+      return md5state.getDigest();
     }
     return "";
   }
@@ -1701,7 +1849,7 @@ namespace VIDEO
         CStdString name = URIUtils::GetFileName(items[i]->GetPath());
         if (reg.RegFind(name) > -1)
         {
-          int season = atoi(reg.GetReplaceString("\\1").c_str());
+          int season = atoi(reg.GetMatch(1).c_str());
           if (season > maxSeasons)
             maxSeasons = season;
         }
@@ -1775,10 +1923,10 @@ namespace VIDEO
                                DIR_FLAG_NO_FILE_INFO);
     for (vector<SActorInfo>::iterator i = actors.begin(); i != actors.end(); ++i)
     {
-      if (i->thumb.IsEmpty())
+      if (i->thumb.empty())
       {
         CStdString thumbFile = i->strName;
-        thumbFile.Replace(" ","_");
+        StringUtils::Replace(thumbFile, ' ', '_');
         for (int j = 0; j < items.Size(); j++)
         {
           CStdString compare = URIUtils::GetFileName(items[j]->GetPath());
@@ -1789,9 +1937,9 @@ namespace VIDEO
             break;
           }
         }
-        if (i->thumb.IsEmpty() && !i->thumbUrl.GetFirstThumb().m_url.IsEmpty())
+        if (i->thumb.empty() && !i->thumbUrl.GetFirstThumb().m_url.empty())
           i->thumb = CScraperUrl::GetThumbURL(i->thumbUrl.GetFirstThumb());
-        if (!i->thumb.IsEmpty())
+        if (!i->thumb.empty())
           CTextureCache::Get().BackgroundCacheImage(i->thumb);
       }
     }
@@ -1807,9 +1955,12 @@ namespace VIDEO
       strNfoFile = URIUtils::AddFileToFolder(pItem->GetPath(), "tvshow.nfo");
 
     CNfoFile::NFOResult result=CNfoFile::NO_NFO;
-    if (!strNfoFile.IsEmpty() && CFile::Exists(strNfoFile))
+    if (!strNfoFile.empty() && CFile::Exists(strNfoFile))
     {
-      result = m_nfoReader.Create(strNfoFile,info,pItem->GetVideoInfoTag()->m_iEpisode);
+      if (info->Content() == CONTENT_TVSHOWS && !pItem->m_bIsFolder)
+        result = m_nfoReader.Create(strNfoFile,info,pItem->GetVideoInfoTag()->m_iEpisode);
+      else
+        result = m_nfoReader.Create(strNfoFile,info);
 
       CStdString type;
       switch(result)
@@ -1830,7 +1981,7 @@ namespace VIDEO
           type = "malformed";
       }
       if (result != CNfoFile::NO_NFO)
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found matching %s NFO file: %s", type.c_str(), strNfoFile.c_str());
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Found matching %s NFO file: %s", type.c_str(), CURL::GetRedacted(strNfoFile).c_str());
       if (result == CNfoFile::FULL_NFO)
       {
         if (info->Content() == CONTENT_TVSHOWS)
@@ -1849,7 +2000,7 @@ namespace VIDEO
       }
     }
     else
-      CLog::Log(LOGDEBUG, "VideoInfoScanner: No NFO file found. Using title search for '%s'", pItem->GetPath().c_str());
+      CLog::Log(LOGDEBUG, "VideoInfoScanner: No NFO file found. Using title search for '%s'", CURL::GetRedacted(pItem->GetPath()).c_str());
 
     return result;
   }
@@ -1904,8 +2055,7 @@ namespace VIDEO
     if (item.IsStack())
       strCheck = CStackDirectory::GetFirstStackedFile(item.GetPath());
 
-    CStdString strDirectory;
-    URIUtils::GetDirectory(strCheck, strDirectory);
+    CStdString strDirectory = URIUtils::GetDirectory(strCheck);
     if (URIUtils::IsInRAR(strCheck))
     {
       CStdString strPath=strDirectory;
@@ -1915,8 +2065,8 @@ namespace VIDEO
     {
       strCheck = strDirectory;
       URIUtils::RemoveSlashAtEnd(strCheck);
-      if (URIUtils::GetFileName(strCheck).size() == 3 && URIUtils::GetFileName(strCheck).Left(2).Equals("cd"))
-        URIUtils::GetDirectory(strCheck, strDirectory);
+      if (URIUtils::GetFileName(strCheck).size() == 3 && StringUtils::StartsWithNoCase(URIUtils::GetFileName(strCheck), "cd"))
+        strDirectory = URIUtils::GetDirectory(strCheck);
     }
     return strDirectory;
   }

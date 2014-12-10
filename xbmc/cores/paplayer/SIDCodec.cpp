@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -38,26 +38,25 @@ SIDCodec::~SIDCodec()
   DeInit();
 }
 
-bool SIDCodec::Init(const CStdString &strFile, unsigned int filecache)
+bool SIDCodec::Init(const std::string &strFile, unsigned int filecache)
 {
   if (!m_dll.Load())
     return false; // error logged previously
 
   m_dll.Init();
 
-  CStdString strFileToLoad = strFile;
+  std::string strFileToLoad = strFile;
   m_iTrack = 0;
   if (URIUtils::HasExtension(strFile, ".sidstream"))
   {
     //  Extract the track to play
-    CStdString strFileName=URIUtils::GetFileName(strFile);
-    int iStart=strFileName.ReverseFind('-')+1;
+    std::string strFileName=URIUtils::GetFileName(strFile);
+    size_t iStart = strFileName.rfind('-') + 1;
     m_iTrack = atoi(strFileName.substr(iStart, strFileName.size()-iStart-10).c_str());
     //  The directory we are in, is the file
     //  that contains the bitstream to play,
     //  so extract it
-    CStdString strPath=strFile;
-    URIUtils::GetDirectory(strPath, strFileToLoad);
+    strFileToLoad = URIUtils::GetDirectory(strFile);
     URIUtils::RemoveSlashAtEnd(strFileToLoad); // we want the filename
   }
 

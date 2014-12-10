@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -122,7 +122,7 @@ bool CGUIWindowVisualisation::OnAction(const CAction &action)
 
   if (passToVis)
   {
-    CGUIControl *control = (CGUIControl *)GetControl(CONTROL_VIS);
+    CGUIControl *control = GetControl(CONTROL_VIS);
     if (control)
       return control->OnAction(action);
   }
@@ -138,7 +138,7 @@ bool CGUIWindowVisualisation::OnMessage(CGUIMessage& message)
   case GUI_MSG_VISUALISATION_RELOAD:
   case GUI_MSG_PLAYBACK_STARTED:
     {
-      CGUIControl *control = (CGUIControl *)GetControl(CONTROL_VIS);
+      CGUIControl *control = GetControl(CONTROL_VIS);
       if (control)
         return control->OnMessage(message);
     }
@@ -163,7 +163,7 @@ bool CGUIWindowVisualisation::OnMessage(CGUIMessage& message)
     {
       // check whether we've come back here from a window during which time we've actually
       // stopped playing music
-      if (message.GetParam1() == WINDOW_INVALID && !g_application.IsPlayingAudio())
+      if (message.GetParam1() == WINDOW_INVALID && !g_application.m_pPlayer->IsPlayingAudio())
       { // why are we here if nothing is playing???
         g_windowManager.PreviousWindow();
         return true;

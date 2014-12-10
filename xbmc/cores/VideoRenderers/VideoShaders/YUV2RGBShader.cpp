@@ -1,23 +1,23 @@
 /*
-* XBMC Media Center
-* Shader Classes
-* Copyright (c) 2007 d4rk
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
+ *      Copyright (c) 2007 d4rk
+ *      Copyright (C) 2007-2013 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "system.h"
 #include "../RenderFlags.h"
@@ -208,12 +208,15 @@ BaseYUV2RGBGLSLShader::BaseYUV2RGBGLSLShader(bool rect, unsigned flags, ERenderF
       m_format == RENDER_FMT_YUV420P10 ||
       m_format == RENDER_FMT_YUV420P16)
     m_defines += "#define XBMC_YV12\n";
-  else if (m_format == RENDER_FMT_NV12)
+  else if (m_format == RENDER_FMT_NV12 ||
+           m_format == RENDER_FMT_VAAPINV12)
     m_defines += "#define XBMC_NV12\n";
   else if (m_format == RENDER_FMT_YUYV422)
     m_defines += "#define XBMC_YUY2\n";
-  else if (m_format == RENDER_FMT_UYVY422)
+  else if (m_format == RENDER_FMT_UYVY422 || m_format == RENDER_FMT_CVBREF)
     m_defines += "#define XBMC_UYVY\n";
+  else if (m_format == RENDER_FMT_VDPAU_420)
+    m_defines += "#define XBMC_VDPAU_NV12\n";
   else
     CLog::Log(LOGERROR, "GL: BaseYUV2RGBGLSLShader - unsupported format %d", m_format);
 
@@ -226,6 +229,12 @@ BaseYUV2RGBGLSLShader::BaseYUV2RGBGLSLShader(bool rect, unsigned flags, ERenderF
   m_hProj   = -1;
   m_hModel  = -1;
   m_hAlpha  = -1;
+  if (m_format == RENDER_FMT_YUV420P)
+    m_defines += "#define XBMC_YV12\n";
+  else if (m_format == RENDER_FMT_NV12)
+    m_defines += "#define XBMC_NV12\n";
+  else
+    CLog::Log(LOGERROR, "GL: BaseYUV2RGBGLSLShader - unsupported format %d", m_format);
 
   VertexShader()->LoadSource("yuv2rgb_vertex_gles.glsl", m_defines);
 #endif
@@ -367,7 +376,7 @@ YUV2RGBProgressiveShaderARB::YUV2RGBProgressiveShaderARB(bool rect, unsigned fla
     else
       shaderfile = "yuv2rgb_basic_2d_YUY2.arb";
   }
-  else if (m_format == RENDER_FMT_UYVY422)
+  else if (m_format == RENDER_FMT_UYVY422 || m_format == RENDER_FMT_CVBREF)
   {
     if(rect)
       shaderfile = "yuv2rgb_basic_rect_UYVY.arb";

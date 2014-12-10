@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2007-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -56,7 +56,7 @@ protected:
   virtual bool CreateVertexBuffer(DWORD FVF, unsigned int vertCount, unsigned int vertSize, unsigned int primitivesCount);
   virtual bool LockVertexBuffer(void **data);
   virtual bool UnlockVertexBuffer();
-  virtual bool LoadEffect(CStdString filename, DefinesMap* defines);
+  virtual bool LoadEffect(const std::string& filename, DefinesMap* defines);
   virtual bool Execute(std::vector<LPDIRECT3DSURFACE9> *vecRT, unsigned int vertexIndexStep);
 
   CD3DEffect   m_effect;

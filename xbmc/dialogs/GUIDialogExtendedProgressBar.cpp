@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -163,7 +163,6 @@ void CGUIDialogExtendedProgressBar::UpdateState(unsigned int currentTime)
   if (fProgress > -1.0f)
   {
     SET_CONTROL_VISIBLE(CONTROL_PROGRESS);
-    CGUIProgressControl* pProgressCtrl=(CGUIProgressControl*)GetControl(CONTROL_PROGRESS);
-    if (pProgressCtrl) pProgressCtrl->SetPercentage(fProgress);
+    CONTROL_SELECT_ITEM(CONTROL_PROGRESS, (unsigned int)fProgress);
   }
 }

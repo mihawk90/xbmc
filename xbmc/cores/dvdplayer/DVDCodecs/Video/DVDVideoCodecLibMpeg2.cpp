@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -110,6 +110,13 @@ DVDVideoPicture* CDVDVideoCodecLibMpeg2::GetBuffer(unsigned int width, unsigned 
         m_pVideoBuffer[i].data[0] = (uint8_t*)_aligned_malloc(iPixels, 16);    //Y
         m_pVideoBuffer[i].data[1] = (uint8_t*)_aligned_malloc(iChromaPixels, 16);  //U
         m_pVideoBuffer[i].data[2] = (uint8_t*)_aligned_malloc(iChromaPixels, 16);  //V
+        if (!m_pVideoBuffer[i].data[0] || !m_pVideoBuffer[i].data[1] || !m_pVideoBuffer[i].data[2])
+        {
+          _aligned_free(m_pVideoBuffer[i].data[0]);
+          _aligned_free(m_pVideoBuffer[i].data[1]);
+          _aligned_free(m_pVideoBuffer[i].data[2]);
+          return NULL;
+        }
 
         //Set all data to 0 for less artifacts.. hmm.. what is black in YUV??
         memset( m_pVideoBuffer[i].data[0], 0, iPixels );

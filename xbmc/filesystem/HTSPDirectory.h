@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
 #pragma once
 #include "IDirectory.h"
 #include "threads/Thread.h"
@@ -81,8 +82,8 @@ namespace XFILE
     public:
       CHTSPDirectory(void);
       virtual ~CHTSPDirectory(void);
-      virtual bool GetDirectory(const CStdString& strPath, CFileItemList &items);
-      virtual DIR_CACHE_TYPE GetCacheType(const CStdString& strPath) const { return DIR_CACHE_ONCE; };
+      virtual bool GetDirectory(const CURL& url, CFileItemList &items);
+      virtual DIR_CACHE_TYPE GetCacheType(const CURL& url) const { return DIR_CACHE_ONCE; };
     private:
       bool GetChannels(const CURL& base, CFileItemList &items);
       bool GetChannels(const CURL& base, CFileItemList &items, HTSP::SChannels channels, int tag);

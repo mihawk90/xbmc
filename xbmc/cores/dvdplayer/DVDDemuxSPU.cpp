@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -109,8 +109,16 @@ CDVDOverlaySpu* CDVDDemuxSPU::AddData(uint8_t* data, int iSize, double pts)
 
   // allocate data if not already done ( done in blocks off 16384 bytes )
   // or allocate some more if 16384 bytes is not enough
-  if((pSPUData->iSize + iSize) > pSPUData->iAllocatedSize)
-    pSPUData->data = (uint8_t*)realloc(pSPUData->data, ALIGN(pSPUData->iSize + iSize, 0x4000));
+  if ((pSPUData->iSize + iSize) > pSPUData->iAllocatedSize)
+  {
+    uint8_t* tmpptr = (uint8_t*)realloc(pSPUData->data, ALIGN(pSPUData->iSize + iSize, 0x4000));
+    if (!tmpptr)
+    {
+      free(pSPUData->data);
+      return NULL;
+    }
+    pSPUData->data = tmpptr;
+  }
 
   if(!pSPUData->data)
     return NULL; // crap realloc failed, this will have leaked some memory due to odd realloc
@@ -362,8 +370,7 @@ CDVDOverlaySpu* CDVDDemuxSPU::ParseRLE(CDVDOverlaySpu* pSPU, uint8_t* pUnparsedD
   /* The subtitles are interlaced, we need two offsets */
   unsigned int i_id = 0;                   /* Start on the even SPU layer */
   unsigned int pi_table[2];
-  unsigned int *pi_offset;
-
+  
   /* Colormap statistics */
   int i_border = -1;
   int stats[4]; stats[0] = stats[1] = stats[2] = stats[3] = 0;
@@ -373,7 +380,7 @@ CDVDOverlaySpu* CDVDDemuxSPU::ParseRLE(CDVDOverlaySpu* pSPU, uint8_t* pUnparsedD
 
   for ( i_y = 0 ; i_y < i_height ; i_y++ )
   {
-    pi_offset = pi_table + i_id;
+    unsigned int *pi_offset = pi_table + i_id;
 
     for ( i_x = 0 ; i_x < i_width ; i_x += i_code >> 2 )
     {

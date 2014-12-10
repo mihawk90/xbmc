@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,9 +18,11 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
 #include "JNIBase.h"
 #include "BroadcastReceiver.h"
-class ANativeActivity;
+
+struct ANativeActivity;
 class CJNIIntent;
 class CJNIPackageManager;
 class CJNIBroadcastReceiver;
@@ -29,6 +31,8 @@ class CJNIClassLoader;
 class CJNIApplicationInfo;
 class CJNIFile;
 class CJNIContentResolver;
+class CJNIWindow;
+
 class CJNIContext
 {
 public:
@@ -48,15 +52,20 @@ public:
   static CJNIFile getDir(const std::string &path, int mode);
   static CJNIFile getExternalFilesDir(const std::string &path);
   static CJNIContentResolver getContentResolver();
+  static CJNIWindow getWindow();
+
   static CJNIContext* GetAppInstance() { return m_appInstance; };
   static void _onNewIntent(JNIEnv *env, jobject context, jobject intent);
+
 protected:
-  virtual void onNewIntent(CJNIIntent intent)=0;
   CJNIContext(const ANativeActivity *nativeActivity);
   ~CJNIContext();
 
+  virtual void onNewIntent(CJNIIntent intent)=0;
+
 private:
   CJNIContext();
+
   void PopulateStaticFields();
   void operator=(CJNIContext const&){};
   static jni::jhobject m_context;

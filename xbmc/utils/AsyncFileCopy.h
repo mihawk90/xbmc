@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include "threads/Thread.h"
 #include "filesystem/File.h"
+#include "utils/StdString.h"
 
 class CAsyncFileCopy : public CThread, public XFILE::IFileCallback
 {
@@ -33,7 +34,7 @@ public:
   /// \return true if successful, and false if it failed or was cancelled.
   bool Copy(const CStdString &from, const CStdString &to, const CStdString &heading);
 
-  /// \brief callback from CFile::Cache()
+  /// \brief callback from CFile::Copy()
   virtual bool OnFileCallback(void *pContext, int ipercent, float avgSpeed);
 
 protected:

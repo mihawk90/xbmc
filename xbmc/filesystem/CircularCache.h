@@ -1,6 +1,6 @@
 /*
- *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      Copyright (C) 2005-2014 Team XBMC
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,12 +36,13 @@ public:
     virtual int Open() ;
     virtual void Close();
 
+    virtual size_t GetMaxWriteSize(const size_t& iRequestSize) ;
     virtual int WriteToCache(const char *buf, size_t len) ;
     virtual int ReadFromCache(char *buf, size_t len) ;
     virtual int64_t WaitForData(unsigned int minimum, unsigned int iMillis) ;
 
     virtual int64_t Seek(int64_t pos) ;
-    virtual void Reset(int64_t pos, bool clearAnyway=true) ;
+    virtual bool Reset(int64_t pos, bool clearAnyway=true) ;
 
     virtual int64_t CachedDataEndPosIfSeekTo(int64_t iFilePosition);
     virtual int64_t CachedDataEndPos(); 

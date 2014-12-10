@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -53,7 +53,7 @@ public:
   virtual void SetHeight(float height);
   void SetLabel(const std::string& strLabel);
   void SetAltLabel(const std::string& label);
-  virtual CStdString GetDescription() const;
+  virtual std::string GetDescription() const;
   void SetToggleSelect(const CStdString &toggleSelect);
   void SetAltClickActions(const CGUIAction &clickActions);
 
@@ -61,6 +61,6 @@ protected:
   virtual bool UpdateColors();
   virtual void OnClick();
   CGUIButtonControl m_selectButton;
-  unsigned int m_toggleSelect;
+  INFO::InfoPtr m_toggleSelect;
 };
 #endif

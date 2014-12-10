@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@
 #include "dialogs/GUIDialogYesNo.h"
 #include "utils/URIUtils.h"
 #include "utils/log.h"
+#include "video/windows/GUIWindowVideoBase.h"
 #ifdef HAS_CDDA_RIPPER
 #include "cdrip/CDDARipper.h"
 #endif
@@ -60,7 +61,7 @@ CAutorun::~CAutorun()
 
 void CAutorun::ExecuteAutorun(const CStdString& path, bool bypassSettings, bool ignoreplaying, bool startFromBeginning )
 {
-  if ((!ignoreplaying && (g_application.IsPlayingAudio() || g_application.IsPlayingVideo() || g_windowManager.HasModalDialog())) || g_windowManager.GetActiveWindow() == WINDOW_LOGIN_SCREEN)
+  if ((!ignoreplaying && (g_application.m_pPlayer->IsPlayingAudio() || g_application.m_pPlayer->IsPlayingVideo() || g_windowManager.HasModalDialog())) || g_windowManager.GetActiveWindow() == WINDOW_LOGIN_SCREEN)
     return ;
 
   CCdInfo* pInfo = g_mediaManager.GetCdInfo(path);
@@ -83,7 +84,7 @@ void CAutorun::ExecuteAutorun(const CStdString& path, bool bypassSettings, bool 
 
 bool CAutorun::PlayDisc(const CStdString& path, bool bypassSettings, bool startFromBeginning)
 {
-  if ( !bypassSettings && !CSettings::Get().GetInt("audiocds.autoaction") == AUTOCD_PLAY && !CSettings::Get().GetBool("dvds.autorun"))
+  if ( !bypassSettings && CSettings::Get().GetInt("audiocds.autoaction") != AUTOCD_PLAY && !CSettings::Get().GetBool("dvds.autorun"))
     return false;
 
   int nSize = g_playlistPlayer.GetPlaylist( PLAYLIST_MUSIC ).size();
@@ -95,21 +96,22 @@ bool CAutorun::PlayDisc(const CStdString& path, bool bypassSettings, bool startF
   if (pInfo == NULL)
     return false;
 
-  if (mediaPath.IsEmpty() && pInfo->IsAudio(1))
+  if (mediaPath.empty() && pInfo->IsAudio(1))
     mediaPath = "cdda://local/";
 
-  if (mediaPath.IsEmpty() && (pInfo->IsISOUDF(1) || pInfo->IsISOHFS(1) || pInfo->IsIso9660(1) || pInfo->IsIso9660Interactive(1)))
+  if (mediaPath.empty() && (pInfo->IsISOUDF(1) || pInfo->IsISOHFS(1) || pInfo->IsIso9660(1) || pInfo->IsIso9660Interactive(1)))
     mediaPath = "iso9660://";
 
-  if (mediaPath.IsEmpty())
+  if (mediaPath.empty())
     mediaPath = path;
 
 #ifdef TARGET_WINDOWS
-  if (mediaPath.IsEmpty() || mediaPath.CompareNoCase("iso9660://") == 0)
+  if (mediaPath.empty() || mediaPath == "iso9660://")
     mediaPath = g_mediaManager.TranslateDevicePath("");
 #endif
 
-  auto_ptr<IDirectory> pDir ( CDirectoryFactory::Create( mediaPath ));
+  const CURL pathToUrl(mediaPath);
+  auto_ptr<IDirectory> pDir ( CDirectoryFactory::Create( pathToUrl ));
   bool bPlaying = RunDisc(pDir.get(), mediaPath, nAddedToPlaylist, true, bypassSettings, startFromBeginning);
 
   if ( !bPlaying && nAddedToPlaylist > 0 )
@@ -132,13 +134,14 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
   bool bPlaying(false);
   CFileItemList vecItems;
 
-  if ( !pDir->GetDirectory( strDrive, vecItems ) )
+  const CURL pathToUrl(strDrive);
+  if ( !pDir->GetDirectory( pathToUrl, vecItems ) )
   {
     return false;
   }
 
   // Sorting necessary for easier HDDVD handling
-  vecItems.Sort(SORT_METHOD_LABEL, SortOrderAscending);
+  vecItems.Sort(SortByLabel, SortOrderAscending);
 
   bool bAllowVideo = true;
 //  bool bAllowPictures = true;
@@ -175,15 +178,18 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           CStdString path = URIUtils::AddFileToFolder(pItem->GetPath(), "VIDEO_TS.IFO");
           if(!CFile::Exists(path))
             path = URIUtils::AddFileToFolder(pItem->GetPath(), "video_ts.ifo");
-          CFileItem item(path, false);
-          item.SetLabel(g_mediaManager.GetDiskLabel(strDrive));
-          item.GetVideoInfoTag()->m_strFileNameAndPath = g_mediaManager.GetDiskUniqueId(strDrive);
+          CFileItemPtr item(new CFileItem(path, false));
+          item->SetLabel(g_mediaManager.GetDiskLabel(strDrive));
+          item->GetVideoInfoTag()->m_strFileNameAndPath = g_mediaManager.GetDiskUniqueId(strDrive);
 
-          if (!startFromBeginning && !item.GetVideoInfoTag()->m_strFileNameAndPath.IsEmpty())
-            item.m_lStartOffset = STARTOFFSET_RESUME;
+          if (!startFromBeginning && !item->GetVideoInfoTag()->m_strFileNameAndPath.empty())
+            item->m_lStartOffset = STARTOFFSET_RESUME;
 
-          g_application.PlayFile(item, false);
-          bPlaying = true;
+          g_playlistPlayer.ClearPlaylist(PLAYLIST_VIDEO);
+          g_playlistPlayer.SetShuffle (PLAYLIST_VIDEO, false);
+          g_playlistPlayer.Add(PLAYLIST_VIDEO, item);
+          g_playlistPlayer.SetCurrentPlaylist(PLAYLIST_VIDEO);
+          g_playlistPlayer.Play(0);
           return true;
         }
 
@@ -193,15 +199,20 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
         if (name.Equals("BDMV") && bAllowVideo
         && (bypassSettings || CSettings::Get().GetBool("dvds.autorun")))
         {
-          CFileItem item(URIUtils::AddFileToFolder(pItem->GetPath(), "index.bdmv"), false);
-          item.SetLabel(g_mediaManager.GetDiskLabel(strDrive));
-          item.GetVideoInfoTag()->m_strFileNameAndPath = g_mediaManager.GetDiskUniqueId(strDrive);
+          CFileItemPtr item(new CFileItem(URIUtils::AddFileToFolder(pItem->GetPath(), "index.bdmv"), false));
+          item->SetLabel(g_mediaManager.GetDiskLabel(strDrive));
+          item->GetVideoInfoTag()->m_strFileNameAndPath = g_mediaManager.GetDiskUniqueId(strDrive);
 
-          if (!startFromBeginning && !item.GetVideoInfoTag()->m_strFileNameAndPath.IsEmpty())
-            item.m_lStartOffset = STARTOFFSET_RESUME;
+          if (!startFromBeginning && !item->GetVideoInfoTag()->m_strFileNameAndPath.empty())
+            item->m_lStartOffset = STARTOFFSET_RESUME;
 
-          g_application.PlayFile(item, false);
-          bPlaying = true;
+          g_playlistPlayer.ClearPlaylist(PLAYLIST_VIDEO);
+          g_playlistPlayer.SetShuffle (PLAYLIST_VIDEO, false);
+          if (!CGUIWindowVideoBase::ShowPlaySelection(item))
+            return false;
+          g_playlistPlayer.Add(PLAYLIST_VIDEO, item);
+          g_playlistPlayer.SetCurrentPlaylist(PLAYLIST_VIDEO);
+          g_playlistPlayer.Play(0);
           return true;
         }
 
@@ -220,7 +231,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           {
             // HD DVD Standard says the highest numbered playlist has to be handled first.
             CLog::Log(LOGINFO,"HD DVD: Playlist found. Set filetypes to *.xpl for external player.");
-            items.Sort(SORT_METHOD_LABEL, SortOrderDescending);
+            items.Sort(SortByLabel, SortOrderDescending);
             phddvdItem = pItem; 
             hddvdname = URIUtils::GetFileName(items[0]->GetPath());
             CLog::Log(LOGINFO,"HD DVD: %s", items[0]->GetPath().c_str());
@@ -240,7 +251,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
             {
               // HD DVD Standard says the lowest numbered ifo has to be handled first.
               CLog::Log(LOGINFO,"HD DVD: IFO found. Set filename to HV* and filetypes to *.ifo for external player.");
-              items.Sort(SORT_METHOD_LABEL, SortOrderAscending);
+              items.Sort(SortByLabel, SortOrderAscending);
               phddvdItem = pItem; 
               hddvdname = URIUtils::GetFileName(items[0]->GetPath());
               CLog::Log(LOGINFO,"HD DVD: %s",items[0]->GetPath().c_str());
@@ -253,7 +264,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           if (items.Size())
           {
             // Sort *.evo files in alphabetical order.
-            items.Sort(SORT_METHOD_LABEL, SortOrderAscending);
+            items.Sort(SortByLabel, SortOrderAscending);
             int64_t asize = 0;
             int ecount = 0;
             // calculate average size of elements above 1gb
@@ -269,7 +280,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
               if (items[j]->m_dwSize >= asize)
                 sitems.Add (items[j]);
             // Sort *.evo files by size.
-            items.Sort(SORT_METHOD_SIZE, SortOrderDescending);
+            items.Sort(SortBySize, SortOrderDescending);
             // Add other files with descending size to bottom of new list.
             for (int j = 0; j < items.Size(); j++)
               if (items[j]->m_dwSize < asize)
@@ -285,7 +296,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
             item.SetLabel(g_mediaManager.GetDiskLabel(strDrive));
             item.GetVideoInfoTag()->m_strFileNameAndPath = g_mediaManager.GetDiskUniqueId(strDrive);
 
-            if (!startFromBeginning && !item.GetVideoInfoTag()->m_strFileNameAndPath.IsEmpty())
+            if (!startFromBeginning && !item.GetVideoInfoTag()->m_strFileNameAndPath.empty())
             item.m_lStartOffset = STARTOFFSET_RESUME;
 
             // get playername
@@ -297,7 +308,6 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
             {
               CLog::Log(LOGINFO,"HD DVD: External singlefile playback initiated: %s",hddvdname.c_str());
               g_application.PlayFile(item, false);
-              bPlaying = true;
               return true;
             } else
               CLog::Log(LOGINFO,"HD DVD: No external player found. Fallback to internal one.");
@@ -310,7 +320,6 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           g_playlistPlayer.Add(PLAYLIST_VIDEO, items);
           g_playlistPlayer.SetCurrentPlaylist(PLAYLIST_VIDEO);
           g_playlistPlayer.Play(0);
-          bPlaying = true;
           return true;
         }
 				
@@ -322,19 +331,18 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           strExt = ".mpg";
 
         // If a file format was extracted we are sure this is a VCD. Autoplay if settings indicate we should.
-        if (!strExt.IsEmpty() && bAllowVideo
+        if (!strExt.empty() && bAllowVideo
              && (bypassSettings || CSettings::Get().GetBool("dvds.autorun")))
         {
           CFileItemList items;
           CDirectory::GetDirectory(pItem->GetPath(), items, strExt);
           if (items.Size())
           {
-            items.Sort(SORT_METHOD_LABEL, SortOrderAscending);
+            items.Sort(SortByLabel, SortOrderAscending);
             g_playlistPlayer.ClearPlaylist(PLAYLIST_VIDEO);
             g_playlistPlayer.Add(PLAYLIST_VIDEO, items);
             g_playlistPlayer.SetCurrentPlaylist(PLAYLIST_VIDEO);
             g_playlistPlayer.Play(0);
-            bPlaying = true;
             return true;
           }
         }
@@ -343,8 +351,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
               && (bypassSettings))
         {
           bPlaying = true;
-          CStdString strExec;
-          strExec.Format("XBMC.RecursiveSlideShow(%s)", pItem->GetPath().c_str());
+          CStdString strExec = StringUtils::Format("RecursiveSlideShow(%s)", pItem->GetPath().c_str());
           CBuiltins::Execute(strExec);
           return true;
         }
@@ -374,7 +381,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
           // TODO: remove this once the app/player is capable of handling stacks immediately
           CStackDirectory dir;
           CFileItemList items;
-          dir.GetDirectory(pItem->GetPath(), items);
+          dir.GetDirectory(pItem->GetURL(), items);
           itemlist.Append(items);
         }
         else
@@ -421,8 +428,7 @@ bool CAutorun::RunDisc(IDirectory* pDir, const CStdString& strDrive, int& nAdded
       if (!pItem->m_bIsFolder && pItem->IsPicture())
       {
         bPlaying = true;
-        CStdString strExec;
-        strExec.Format("XBMC.RecursiveSlideShow(%s)", strDrive.c_str());
+        CStdString strExec = StringUtils::Format("RecursiveSlideShow(%s)", strDrive.c_str());
         CBuiltins::Execute(strExec);
         break;
       }
@@ -493,7 +499,7 @@ bool CAutorun::PlayDiscAskResume(const CStdString& path)
 bool CAutorun::CanResumePlayDVD(const CStdString& path)
 {
   CStdString strUniqueId = g_mediaManager.GetDiskUniqueId(path);
-  if (!strUniqueId.IsEmpty())
+  if (!strUniqueId.empty())
   {
     CVideoDatabase dbs;
     dbs.Open();
@@ -504,25 +510,13 @@ bool CAutorun::CanResumePlayDVD(const CStdString& path)
   return false;
 }
 
-void CAutorun::SettingOptionAudioCdActionsFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current)
+void CAutorun::SettingOptionAudioCdActionsFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current, void *data)
 {
   list.push_back(make_pair(g_localizeStrings.Get(16018), AUTOCD_NONE));
   list.push_back(make_pair(g_localizeStrings.Get(14098), AUTOCD_PLAY));
 #ifdef HAS_CDDA_RIPPER
   list.push_back(make_pair(g_localizeStrings.Get(14096), AUTOCD_RIP));
 #endif
-}
-
-void CAutorun::SettingOptionAudioCdEncodersFiller(const CSetting *setting, std::vector< std::pair<std::string, int> > &list, int &current)
-{
-#ifdef HAVE_LIBMP3LAME
-  list.push_back(make_pair(g_localizeStrings.Get(34000), CDDARIP_ENCODER_LAME));
-#endif
-#ifdef HAVE_LIBVORBISENC
-  list.push_back(make_pair(g_localizeStrings.Get(34001), CDDARIP_ENCODER_VORBIS));
-#endif
-  list.push_back(make_pair(g_localizeStrings.Get(34002), CDDARIP_ENCODER_WAV));
-  list.push_back(make_pair(g_localizeStrings.Get(34005), CDDARIP_ENCODER_FLAC));
 }
 
 #endif

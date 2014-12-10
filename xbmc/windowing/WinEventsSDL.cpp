@@ -1,22 +1,22 @@
 /*
-*      Copyright (C) 2005-2013 Team XBMC
-*      http://www.xbmc.org
-*
-*  This Program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-*
-*  This Program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with XBMC; see the file COPYING.  If not, see
-*  <http://www.gnu.org/licenses/>.
-*
-*/
+ *      Copyright (C) 2005-2013 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "system.h"
 #ifdef HAS_SDL_WIN_EVENTS
@@ -26,6 +26,7 @@
 #include "Application.h"
 #include "ApplicationMessenger.h"
 #include "GUIUserMessages.h"
+#include "settings/DisplaySettings.h"
 #include "guilib/GUIWindowManager.h"
 #include "guilib/Key.h"
 #ifdef HAS_SDL_JOYSTICK
@@ -83,6 +84,8 @@ static uint16_t SymMappingsEvdev[][2] =
 , { 179, XBMCK_LAUNCH_MEDIA_SELECT } // Launch media select
 , { 180, XBMCK_BROWSER_HOME }        // Browser home
 , { 181, XBMCK_BROWSER_REFRESH }     // Browser refresh
+, { 208, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
+, { 209, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
 , { 214, XBMCK_ESCAPE }              // Close
 , { 215, XBMCK_MEDIA_PLAY_PAUSE }    // Play_Pause
 , { 216, 0x66 /* 'f' */}             // Forward
@@ -232,6 +235,8 @@ bool CWinEventsSDL::MessagePump()
       case SDL_JOYAXISMOTION:
       case SDL_JOYBALLMOTION:
       case SDL_JOYHATMOTION:
+      case SDL_JOYDEVICEADDED:
+      case SDL_JOYDEVICEREMOVED:
         g_Joystick.Update(event);
         ret = true;
         break;
@@ -363,6 +368,16 @@ bool CWinEventsSDL::MessagePump()
       }
       case SDL_VIDEORESIZE:
       {
+        // Under linux returning from fullscreen, SDL sends an extra event to resize to the desktop
+        // resolution causing the previous window dimensions to be lost. This is needed to rectify
+        // that problem.
+        if(!g_Windowing.IsFullScreen())
+        {
+          int RES_SCREEN = g_Windowing.DesktopResolution(g_Windowing.GetCurrentScreen());
+          if((event.resize.w == CDisplaySettings::Get().GetResolutionInfo(RES_SCREEN).iWidth) &&
+              (event.resize.h == CDisplaySettings::Get().GetResolutionInfo(RES_SCREEN).iHeight))
+            break;
+        }
         XBMC_Event newEvent;
         newEvent.type = XBMC_VIDEORESIZE;
         newEvent.resize.w = event.resize.w;
@@ -389,6 +404,17 @@ bool CWinEventsSDL::MessagePump()
   return ret;
 }
 
+size_t CWinEventsSDL::GetQueueSize()
+{
+  int ret;
+  SDL_Event event;
+
+  if (-1 == (ret = SDL_PeepEvents(&event, 0, SDL_PEEKEVENT, ~0)))
+    ret = 0;
+
+  return ret;
+}
+
 #ifdef TARGET_DARWIN_OSX
 bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
 {
@@ -399,7 +425,16 @@ bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
 
   if (cmd && event.key.type == SDL_KEYDOWN)
   {
-    switch(event.key.keysym.sym)
+    char keysymbol = event.key.keysym.sym;
+
+    // if the unicode is in the ascii range
+    // use this instead for getting the real
+    // character based on the used keyboard layout
+    // see http://lists.libsdl.org/pipermail/sdl-libsdl.org/2004-May/043716.html
+    if (!(event.key.keysym.unicode & 0xff80))
+      keysymbol = event.key.keysym.unicode;
+
+    switch(keysymbol)
     {
     case SDLK_q:  // CMD-q to quit
       if (!g_application.m_bStop)
@@ -414,7 +449,10 @@ bool CWinEventsSDL::ProcessOSXShortcuts(SDL_Event& event)
       g_application.OnAction(CAction(ACTION_TAKE_SCREENSHOT));
       return true;
 
-    case SDLK_h: // CMD-h to hide (but we minimize for now)
+    case SDLK_h: // CMD-h to hide
+      g_Windowing.Hide();
+      return true;
+
     case SDLK_m: // CMD-m to minimize
       CApplicationMessenger::Get().Minimize();
       return true;

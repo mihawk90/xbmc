@@ -10,7 +10,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@ public:
 
 protected:
   virtual bool UpdateColors();
-  virtual CStdString GetDescription() const;
+  virtual std::string GetDescription() const;
   void AddLabel(const std::string &label);
 
   /*! \brief retrieve the current label for display

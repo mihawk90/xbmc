@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,9 +29,9 @@ public:
 
 protected:
   virtual VECSOURCES& GetSources();
-  virtual CStdString GetLockType();
+  virtual std::string GetLockType();
   virtual int GetPlaylist();
-  virtual CStdString GetExtensions();
+  virtual std::string GetExtensions();
 };
 
 class CGUIViewStateWindowVideoFiles : public CGUIViewStateWindowVideo

@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,26 +21,12 @@
 
 #include "DVDDemux.h"
 #include <map>
-#include "DllAvCodec.h"
-#include "DllAvFormat.h"
-
-#ifndef TARGET_POSIX
-#include <libavformat/avformat.h>
-#else
-extern "C" {
-#if (defined USE_EXTERNAL_FFMPEG)
-  #if (defined HAVE_LIBAVFORMAT_AVFORMAT_H)
-    #include <libavformat/avformat.h>
-  #elif (defined HAVE_FFMPEG_AVFORMAT_H)
-    #include <ffmpeg/avformat.h>
-  #endif
-#else
-  #include "libavformat/avformat.h"
-#endif
-}
-#endif
-
 #include "pvr/addons/PVRClient.h"
+
+extern "C" {
+#include "libavcodec/avcodec.h"
+#include "libavformat/avformat.h"
+}
 
 class CDVDDemuxPVRClient;
 struct PVR_STREAM_PROPERTIES;
@@ -114,7 +100,7 @@ public:
   CDemuxStream* GetStream(int iStreamId);
   int GetNrOfStreams();
   std::string GetFileName();
-  virtual void GetStreamCodecName(int iStreamId, CStdString &strName);
+  virtual void GetStreamCodecName(int iStreamId, std::string &strName);
 
 protected:
   CDVDInputStream* m_pInput;
@@ -123,8 +109,6 @@ protected:
 #endif
   CDemuxStream* m_streams[MAX_STREAMS]; // maximum number of streams that ffmpeg can handle
   boost::shared_ptr<PVR::CPVRClient> m_pvrClient;
-
-  DllAvCodec  m_dllAvCodec;
 
 private:
   void RequestStreams();

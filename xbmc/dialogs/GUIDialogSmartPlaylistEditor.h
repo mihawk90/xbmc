@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,8 +39,8 @@ public:
   virtual void OnInitWindow();
   virtual void OnDeinitWindow(int nextWindowID);
 
-  static bool EditPlaylist(const CStdString &path, const CStdString &type = "");
-  static bool NewPlaylist(const CStdString &type);
+  static bool EditPlaylist(const std::string &path, const std::string &type = "");
+  static bool NewPlaylist(const std::string &type);
 
 protected:
   void OnRuleList(int item);
@@ -59,16 +59,16 @@ protected:
   void UpdateRuleControlButtons();
   int GetSelectedItem();
   void HighlightItem(int item);
-  PLAYLIST_TYPE ConvertType(const CStdString &type);
-  CStdString ConvertType(PLAYLIST_TYPE type);
-  int GetLocalizedType(PLAYLIST_TYPE type);
+  PLAYLIST_TYPE ConvertType(const std::string &type);
+  std::string ConvertType(PLAYLIST_TYPE type);
+  std::string GetLocalizedType(PLAYLIST_TYPE type);
 
   CSmartPlaylist m_playlist;
 
   // our list of rules for display purposes
   CFileItemList* m_ruleLabels;
 
-  CStdString m_path;
+  std::string m_path;
   bool m_cancelled;
-  CStdString m_mode;  // mode we're in (partymode etc.)
+  std::string m_mode;  // mode we're in (partymode etc.)
 };

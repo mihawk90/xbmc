@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,7 +13,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -42,7 +43,7 @@ CUrlOptions::~CUrlOptions()
 std::string CUrlOptions::GetOptionsString(bool withLeadingSeperator /* = false */) const
 {
   std::string options;
-  for (UrlOptions::const_iterator opt = m_options.begin(); opt != m_options.end(); opt++)
+  for (UrlOptions::const_iterator opt = m_options.begin(); opt != m_options.end(); ++opt)
   {
     if (opt != m_options.begin())
       options += "&";
@@ -132,7 +133,7 @@ void CUrlOptions::AddOptions(const std::string &options)
 
   // split the options by & and process them one by one
   vector<string> optionList = StringUtils::Split(strOptions, "&");
-  for (vector<string>::const_iterator option = optionList.begin(); option != optionList.end(); option++)
+  for (vector<string>::const_iterator option = optionList.begin(); option != optionList.end(); ++option)
   {
     if (option->empty())
       continue;

@@ -9,7 +9,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
  *  <http://www.gnu.org/licenses/>.
  *
  */
+
+#include "utils/auto_buffer.h"
 
 // forward definition
 class CBaseTexture;
@@ -118,7 +120,7 @@ protected:
 
   // modifying glyphs
   void EmboldenGlyph(FT_GlyphSlot slot);
-  void ObliqueGlyph(FT_GlyphSlot slot);
+  static void ObliqueGlyph(FT_GlyphSlot slot);
 
   CBaseTexture* m_texture;        // texture that holds our rendered characters (8bit alpha only)
 
@@ -131,7 +133,7 @@ protected:
    Accounts for spacing between lines to avoid characters overlapping.
    */
   unsigned int GetTextureLineHeight() const;
-  static unsigned int spacing_between_characters_in_texture;
+  static const unsigned int spacing_between_characters_in_texture;
 
   color_t m_color;
 
@@ -154,7 +156,6 @@ protected:
   float m_originX;
   float m_originY;
 
-  bool m_bTextureLoaded;
   unsigned int m_nTexture;
 
   SVertex* m_vertex;
@@ -167,8 +168,11 @@ protected:
   static int justification_word_weight;
 
   CStdString m_strFileName;
+  XUTILS::auto_buffer m_fontFileInMemory; // used only in some cases, see CFreeTypeLibrary::GetFont()
 
 private:
+  CGUIFontTTFBase(const CGUIFontTTFBase&);
+  CGUIFontTTFBase& operator=(const CGUIFontTTFBase&);
   int m_referenceCount;
 };
 

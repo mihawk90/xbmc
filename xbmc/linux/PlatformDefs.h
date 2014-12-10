@@ -3,7 +3,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -360,7 +360,7 @@ typedef int (*LPTHREAD_START_ROUTINE)(void *);
   #define __stat64 stat
   #define fstat64 fstat
   typedef int64_t off64_t;
-  #if defined(TARGET_DARWIN_IOS) || defined(TARGET_FREEBSD)
+  #if defined(TARGET_FREEBSD)
     #define statfs64 statfs
   #endif
 #else

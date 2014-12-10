@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -434,16 +434,35 @@ bool CGUIControlGroup::HasVisibleID(int id) const
   return false;
 }
 
-const CGUIControl* CGUIControlGroup::GetControl(int iControl) const
+CGUIControl *CGUIControlGroup::GetControl(int iControl)
 {
   CGUIControl *pPotential = NULL;
+  LookupMap::iterator first = m_lookup.find(iControl);
+  if (first != m_lookup.end())
+  {
+    LookupMap::iterator last = m_lookup.upper_bound(iControl);
+    for (LookupMap::iterator i = first; i != last; ++i)
+    {
+      CGUIControl *control = i->second;
+      if (control->IsVisible())
+        return control;
+      else if (!pPotential)
+        pPotential = control;
+    }
+  }
+  return pPotential;
+}
+
+const CGUIControl* CGUIControlGroup::GetControl(int iControl) const
+{
+  const CGUIControl *pPotential = NULL;
   LookupMap::const_iterator first = m_lookup.find(iControl);
   if (first != m_lookup.end())
   {
     LookupMap::const_iterator last = m_lookup.upper_bound(iControl);
-    for (LookupMap::const_iterator i = first; i != last; i++)
+    for (LookupMap::const_iterator i = first; i != last; ++i)
     {
-      CGUIControl *control = i->second;
+      const CGUIControl *control = i->second;
       if (control->IsVisible())
         return control;
       else if (!pPotential)
@@ -531,7 +550,7 @@ void CGUIControlGroup::AddLookup(CGUIControl *control)
   if (control->IsGroup())
   { // first add all the subitems of this group (if they exist)
     const LookupMap map = ((CGUIControlGroup *)control)->GetLookup();
-    for (LookupMap::const_iterator i = map.begin(); i != map.end(); i++)
+    for (LookupMap::const_iterator i = map.begin(); i != map.end(); ++i)
       m_lookup.insert(m_lookup.upper_bound(i->first), make_pair(i->first, i->second));
   }
   if (control->GetID())
@@ -546,9 +565,9 @@ void CGUIControlGroup::RemoveLookup(CGUIControl *control)
   if (control->IsGroup())
   { // remove the group's lookup
     const LookupMap &map = ((CGUIControlGroup *)control)->GetLookup();
-    for (LookupMap::const_iterator i = map.begin(); i != map.end(); i++)
+    for (LookupMap::const_iterator i = map.begin(); i != map.end(); ++i)
     { // remove this control
-      for (LookupMap::iterator it = m_lookup.begin(); it != m_lookup.end(); it++)
+      for (LookupMap::iterator it = m_lookup.begin(); it != m_lookup.end(); ++it)
       {
         if (i->second == it->second)
         {
@@ -561,7 +580,7 @@ void CGUIControlGroup::RemoveLookup(CGUIControl *control)
   // remove the actual control
   if (control->GetID())
   {
-    for (LookupMap::iterator it = m_lookup.begin(); it != m_lookup.end(); it++)
+    for (LookupMap::iterator it = m_lookup.begin(); it != m_lookup.end(); ++it)
     {
       if (control == it->second)
       {
@@ -578,7 +597,7 @@ bool CGUIControlGroup::IsValidControl(const CGUIControl *control) const
 {
   if (control->GetID())
   {
-    for (LookupMap::const_iterator it = m_lookup.begin(); it != m_lookup.end(); it++)
+    for (LookupMap::const_iterator it = m_lookup.begin(); it != m_lookup.end(); ++it)
     {
       if (control == it->second)
         return true;
@@ -636,11 +655,11 @@ void CGUIControlGroup::ClearAll()
   // first remove from the lookup table
   if (m_parentControl)
   {
-    for (iControls it = m_children.begin(); it != m_children.end(); it++)
+    for (iControls it = m_children.begin(); it != m_children.end(); ++it)
       ((CGUIControlGroup *)m_parentControl)->RemoveLookup(*it);
   }
   // and delete all our children
-  for (iControls it = m_children.begin(); it != m_children.end(); it++)
+  for (iControls it = m_children.begin(); it != m_children.end(); ++it)
   {
     CGUIControl *control = *it;
     delete control;

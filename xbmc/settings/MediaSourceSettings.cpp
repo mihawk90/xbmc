@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -187,7 +187,7 @@ void CMediaSourceSettings::SetDefaultSource(const std::string &type, const std::
 }
 
 // NOTE: This function does NOT save the sources.xml file - you need to call SaveSources() separately.
-bool CMediaSourceSettings::UpdateSource(const std::string &strType, const std::string strOldName, const std::string &strUpdateChild, const std::string &strUpdateValue)
+bool CMediaSourceSettings::UpdateSource(const std::string &strType, const std::string &strOldName, const std::string &strUpdateChild, const std::string &strUpdateValue)
 {
   VECSOURCES *pShares = GetSources(strType);
   if (pShares == NULL)
@@ -223,7 +223,7 @@ bool CMediaSourceSettings::UpdateSource(const std::string &strType, const std::s
   return false;
 }
 
-bool CMediaSourceSettings::DeleteSource(const std::string &strType, const std::string &strName, const std::string strPath, bool virtualSource /* = false */)
+bool CMediaSourceSettings::DeleteSource(const std::string &strType, const std::string &strName, const std::string &strPath, bool virtualSource /* = false */)
 {
   VECSOURCES *pShares = GetSources(strType);
   if (pShares == NULL)
@@ -326,15 +326,12 @@ bool CMediaSourceSettings::GetSource(const std::string &category, const TiXmlNod
     {
       CStdString strPath = pPathName->FirstChild()->ValueStr();
 
-      // make sure there are no virtualpaths or stack paths defined in xboxmediacenter.xml
+      // make sure there are no virtualpaths or stack paths defined in sources.xml
       if (!URIUtils::IsStack(strPath))
       {
         // translate special tags
         if (!strPath.empty() && strPath.at(0) == '$')
-        {
-          string strPathOld(strPath);
           strPath = CUtil::TranslateSpecialSource(strPath);
-        }
 
         // need to check path validity again as CUtil::TranslateSpecialSource() may have failed
         if (!strPath.empty())
@@ -358,7 +355,7 @@ bool CMediaSourceSettings::GetSource(const std::string &category, const TiXmlNod
   if (strName.empty() || vecPaths.empty())
     return false;
 
-  vector<CStdString> verifiedPaths;
+  vector<string> verifiedPaths;
   // disallowed for files, or theres only a single path in the vector
   if (StringUtils::EqualsNoCase(category, "files") || vecPaths.size() == 1)
     verifiedPaths.push_back(vecPaths[0]);
@@ -366,17 +363,16 @@ bool CMediaSourceSettings::GetSource(const std::string &category, const TiXmlNod
   else
   {
     // validate the paths
-    for (vector<string>::const_iterator path = vecPaths.begin(); path != vecPaths.end(); path++)
+    for (vector<string>::const_iterator path = vecPaths.begin(); path != vecPaths.end(); ++path)
     {
       CURL url(*path);
-      string protocol = url.GetProtocol();
       bool bIsInvalid = false;
 
       // for my programs
       if (StringUtils::EqualsNoCase(category, "programs") || StringUtils::EqualsNoCase(category, "myprograms"))
       {
         // only allow HD and plugins
-        if (url.IsLocal() || StringUtils::EqualsNoCase(protocol, "plugin"))
+        if (url.IsLocal() || url.IsProtocol("plugin"))
           verifiedPaths.push_back(*path);
         else
           bIsInvalid = true;

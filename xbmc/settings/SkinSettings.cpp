@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "utils/log.h"
 #include "utils/StringUtils.h"
 #include "utils/XBMCTinyXML.h"
+#include "utils/XMLUtils.h"
 
 #define XML_SKINSETTINGS  "skinsettings"
 #define XML_SETTING       "setting"
@@ -55,7 +56,7 @@ int CSkinSettings::TranslateString(const string &setting)
 
   CSingleLock lock(m_critical);
   // run through and see if we have this setting
-  for (map<int, CSkinString>::const_iterator it = m_strings.begin(); it != m_strings.end(); it++)
+  for (map<int, CSkinString>::const_iterator it = m_strings.begin(); it != m_strings.end(); ++it)
   {
     if (StringUtils::EqualsNoCase(settingName, it->second.name))
       return it->first;
@@ -100,7 +101,7 @@ int CSkinSettings::TranslateBool(const string &setting)
 
   CSingleLock lock(m_critical);
   // run through and see if we have this setting
-  for (map<int, CSkinBool>::const_iterator it = m_bools.begin(); it != m_bools.end(); it++)
+  for (map<int, CSkinBool>::const_iterator it = m_bools.begin(); it != m_bools.end(); ++it)
   {
     if (StringUtils::EqualsNoCase(settingName, it->second.name))
       return it->first;
@@ -147,7 +148,7 @@ void CSkinSettings::Reset(const string &setting)
 
   CSingleLock lock(m_critical);
   // run through and see if we have this setting as a string
-  for (map<int, CSkinString>::iterator it = m_strings.begin(); it != m_strings.end(); it++)
+  for (map<int, CSkinString>::iterator it = m_strings.begin(); it != m_strings.end(); ++it)
   {
     if (StringUtils::EqualsNoCase(settingName, it->second.name))
     {
@@ -157,7 +158,7 @@ void CSkinSettings::Reset(const string &setting)
   }
 
   // and now check for the skin bool
-  for (map<int, CSkinBool>::iterator it = m_bools.begin(); it != m_bools.end(); it++)
+  for (map<int, CSkinBool>::iterator it = m_bools.begin(); it != m_bools.end(); ++it)
   {
     if (StringUtils::EqualsNoCase(settingName, it->second.name))
     {
@@ -173,15 +174,15 @@ void CSkinSettings::Reset()
 
   CSingleLock lock(m_critical);
   // clear all the settings and strings from this skin.
-  for (map<int, CSkinBool>::iterator it = m_bools.begin(); it != m_bools.end(); it++)
+  for (map<int, CSkinBool>::iterator it = m_bools.begin(); it != m_bools.end(); ++it)
   {
-    if (StringUtils::StartsWith(it->second.name, currentSkin))
+    if (StringUtils::StartsWithNoCase(it->second.name, currentSkin))
       it->second.value = false;
   }
 
-  for (map<int, CSkinString>::iterator it = m_strings.begin(); it != m_strings.end(); it++)
+  for (map<int, CSkinString>::iterator it = m_strings.begin(); it != m_strings.end(); ++it)
   {
-    if (StringUtils::StartsWith(it->second.name, currentSkin))
+    if (StringUtils::StartsWithNoCase(it->second.name, currentSkin))
       it->second.value.clear();
   }
 
@@ -208,8 +209,9 @@ bool CSkinSettings::Load(const TiXmlNode *settings)
   const TiXmlElement *pChild = pElement->FirstChildElement(XML_SETTING);
   while (pChild)
   {
-    CStdString settingName = pChild->Attribute(XML_ATTR_NAME);
-    if (pChild->Attribute("type") && StringUtils::EqualsNoCase(pChild->Attribute(XML_ATTR_TYPE), "string"))
+    std::string settingName = XMLUtils::GetAttribute(pChild, XML_ATTR_NAME);
+    std::string settingType = XMLUtils::GetAttribute(pChild, XML_ATTR_TYPE);
+    if (settingType == "string")
     { // string setting
       CSkinString string;
       string.name = settingName;

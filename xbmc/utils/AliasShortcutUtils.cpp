@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2009-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 
 #include "AliasShortcutUtils.h"
 
-bool IsAliasShortcut(CStdString &path)
+bool IsAliasShortcut(const std::string& path)
 {
   bool  rtn = false;
 
@@ -65,7 +65,7 @@ bool IsAliasShortcut(CStdString &path)
   return(rtn);
 }
 
-void TranslateAliasShortcut(CStdString &path)
+void TranslateAliasShortcut(std::string& path)
 {
 #if defined(TARGET_DARWIN_OSX)
   FSRef fileRef;

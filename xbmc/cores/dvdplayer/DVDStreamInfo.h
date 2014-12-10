@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,16 +25,9 @@
 #endif
 
 #include "DVDDemuxers/DVDDemux.h"
+
 extern "C" {
-#if (defined USE_EXTERNAL_FFMPEG)
-  #if (defined HAVE_LIBAVCODEC_AVCODEC_H)
-    #include <libavcodec/avcodec.h>
-  #elif (defined HAVE_FFMPEG_AVCODEC_H)
-    #include <ffmpeg/avcodec.h>
-  #endif
-#else
-  #include "libavcodec/avcodec.h"
-#endif
+#include "libavcodec/avcodec.h"
 }
 
 class CDemuxStream;
@@ -55,9 +48,11 @@ public:
   void Assign(const CDVDStreamInfo &right, bool withextradata);
   void Assign(const CDemuxStream &right, bool withextradata);
 
-  CodecID codec;
+  AVCodecID codec;
   StreamType type;
+  int flags;
   bool software;  //force software decoding
+  std::string filename;
 
 
   // VIDEO
@@ -77,6 +72,7 @@ public:
   int orientation; // orientation of the video in degress counter clockwise
   int bitsperpixel;
   int pid;
+  std::string stereo_mode; // stereoscopic 3d mode
 
   // AUDIO
   int channels;

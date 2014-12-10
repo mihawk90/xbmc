@@ -7,15 +7,16 @@ endif
 DEPENDS = \
 	pcre expat gettext sqlite3 libgpg-error \
 	libgcrypt bzip2 liblzo2 libzip freetype2 fontconfig \
-	openssl libssh2 curl \
+	openssl gmp nettle gnutls libssh2 curl \
 	libjpeg-turbo tiff jasper libpng \
-	libogg libvorbis libflac libmad fribidi libmpeg2 \
-	libass libsamplerate \
+	libogg libvorbis libflac fribidi libmpeg2 \
+	libass \
 	libmodplug librtmp libxml2 yajl libmicrohttpd mysql libffi \
 	python26 afpfs-ng libshairplay \
 	libplist libcec libbluray boost tinyxml dummy-libxbmc \
-	libamplayer libssh taglib xbmc-pvr-addons libusb libnfs libmp3lame \
-        pythonmodule-pil
+	libamplayer libssh taglib libusb libnfs libmp3lame \
+	xbmc-pvr-addons xbmc-audioencoder-addons \
+	pythonmodule-pil libxslt ffmpeg
 
 ifeq ($(ENABLE_GPLV3),1)
   DEPENDS+=samba-gplv3 libcdio-gplv3
@@ -25,12 +26,17 @@ endif
 
 ifeq ($(OS),ios)
   DEPENDS += Backrow
-  EXCLUDED_DEPENDS = libcec libcrystalhd libusb
+  EXCLUDED_DEPENDS = libcec libusb gmp nettle gnutls
 endif
 
 ifeq ($(OS),osx)
-  DEPENDS += libGLEW libsdl libcrystalhd
-  EXCLUDED_DEPENDS = libusb
+  DEPENDS += libGLEW libsdl
+  EXCLUDED_DEPENDS = libusb gmp nettle gnutls
+endif
+
+ifeq ($(OS),android)
+  DEPENDS += mdnsresponder android-sources-ics
+  EXCLUDED_DEPENDS = gmp nettle gnutls
 endif
 
 DEPENDS := $(filter-out $(EXCLUDED_DEPENDS),$(DEPENDS))
@@ -48,9 +54,16 @@ ifeq ($(NEED_LIBICONV),1)
 endif
 
 ALSA_LIB=
+LINUX_SYSTEM_LIBS=
 ifeq ($(OS),linux)
+  #not for raspberry pi
+  ifneq ($(TARGET_PLATFORM),raspberry-pi)
+    DEPENDS += libsdl2 linux-system-libs
+    LINUX_SYSTEM_LIBS = linux-system-libs
+  endif
   DEPENDS += alsa-lib
   ALSA_LIB = alsa-lib
+  FFMPEG_DEPENDS = gnutls
 endif
 
 .PHONY: $(DEPENDS)
@@ -76,12 +89,18 @@ libplist: libxml2 $(ZLIB)
 libbluray: $(ICONV) libxml2
 libssh: openssl
 xbmc-pvr-addons: boost mysql
+xbmc-audioencoder-addons: libvorbis libflac libmp3lame libogg
 mysql: openssl
 libzip: $(ZLIB)
 libmp3lame: $(ICONV)
 libpng: $(ZLIB)
 openssl: $(ZLIB)
+gnutls: nettle $(ZLIB)
+nettle: gmp
 pythonmodule-pil: $(ZLIB) libjpeg-turbo libpng freetype2 python26
+libsdl2: $(LINUX_SYSTEM_LIBS)
+libxslt: libgcrypt
+ffmpeg: $(ICONV) $(ZLIB) bzip2 libvorbis $(FFMPEG_DEPENDS)
 
 .installed-$(PLATFORM): $(DEPENDS)
 	touch $@
@@ -106,3 +125,18 @@ test-dependencies:
 distclean::
 	for d in $(DEPENDS); do $(MAKE) -C $$d distclean; done
 
+linux-system-libs:
+	[ -f $(PREFIX)/lib/pkgconfig/x11.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/x11.pc $(PREFIX)/lib/pkgconfig/x11.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xproto.pc ] || ln -s /usr/share/pkgconfig/xproto.pc $(PREFIX)/lib/pkgconfig/xproto.pc
+	[ -f $(PREFIX)/lib/pkgconfig/kbproto.pc ] || ln -s /usr/share/pkgconfig/kbproto.pc $(PREFIX)/lib/pkgconfig/kbproto.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xcb.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xcb.pc $(PREFIX)/lib/pkgconfig/xcb.pc
+	[ -f $(PREFIX)/lib/pkgconfig/pthread-stubs.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/pthread-stubs.pc $(PREFIX)/lib/pkgconfig/pthread-stubs.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xau.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xau.pc $(PREFIX)/lib/pkgconfig/xau.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xdmcp.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xdmcp.pc $(PREFIX)/lib/pkgconfig/xdmcp.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xext.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xext.pc $(PREFIX)/lib/pkgconfig/xext.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xextproto.pc ] || ln -s /usr/share/pkgconfig/xextproto.pc $(PREFIX)/lib/pkgconfig/xextproto.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xt.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xt.pc $(PREFIX)/lib/pkgconfig/xt.pc
+	[ -f $(PREFIX)/lib/pkgconfig/ice.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/ice.pc $(PREFIX)/lib/pkgconfig/ice.pc
+	[ -f $(PREFIX)/lib/pkgconfig/sm.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/sm.pc $(PREFIX)/lib/pkgconfig/sm.pc
+	[ -f $(PREFIX)/lib/pkgconfig/xmu.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/xmu.pc $(PREFIX)/lib/pkgconfig/xmu.pc
+	[ -f $(PREFIX)/lib/pkgconfig/libdrm.pc ] || ln -s /usr/lib/$(HOST)/pkgconfig/libdrm.pc $(PREFIX)/lib/pkgconfig/libdrm.pc

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2010-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "DVDVideoCodecOpenMax.h"
 #include "OpenMaxVideo.h"
 #include "utils/log.h"
+#include "settings/Settings.h"
 
 #define CLASSNAME "COpenMax"
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +58,7 @@ bool CDVDVideoCodecOpenMax::Open(CDVDStreamInfo &hints, CDVDCodecOptions &option
 
     switch (hints.codec)
     {
-      case CODEC_ID_H264:
+      case AV_CODEC_ID_H264:
       {
         m_pFormatName = "omx-h264";
         if (hints.extrasize < 7 || hints.extradata == NULL)
@@ -71,13 +72,13 @@ bool CDVDVideoCodecOpenMax::Open(CDVDStreamInfo &hints, CDVDCodecOptions &option
           m_convert_bitstream = bitstream_convert_init(hints.extradata, hints.extrasize);
       }
       break;
-      case CODEC_ID_MPEG4:
+      case AV_CODEC_ID_MPEG4:
         m_pFormatName = "omx-mpeg4";
       break;
-      case CODEC_ID_MPEG2VIDEO:
+      case AV_CODEC_ID_MPEG2VIDEO:
         m_pFormatName = "omx-mpeg2";
       break;
-      case CODEC_ID_VC1:
+      case AV_CODEC_ID_VC1:
         m_pFormatName = "omx-vc1";
       break;
       default:
@@ -121,7 +122,7 @@ void CDVDVideoCodecOpenMax::Dispose()
   if (m_omx_decoder)
   {
     m_omx_decoder->Close();
-    delete m_omx_decoder;
+    m_omx_decoder->Release();
     m_omx_decoder = NULL;
   }
   if (m_videobuffer.iFlags & DVP_FLAG_ALLOCATED)
@@ -175,7 +176,7 @@ int CDVDVideoCodecOpenMax::Decode(uint8_t* pData, int iSize, double dts, double 
     return rtn;
   }
   
-  return VC_BUFFER;
+  return m_omx_decoder->Decode(0, 0, 0, 0);
 }
 
 void CDVDVideoCodecOpenMax::Reset(void)
@@ -188,8 +189,15 @@ bool CDVDVideoCodecOpenMax::GetPicture(DVDVideoPicture* pDvdVideoPicture)
   m_omx_decoder->GetPicture(&m_videobuffer);
   *pDvdVideoPicture = m_videobuffer;
 
+  // TODO what's going on here? bool is required as return value.
   return VC_PICTURE | VC_BUFFER;
 }
+
+bool CDVDVideoCodecOpenMax::ClearPicture(DVDVideoPicture* pDvdVideoPicture)
+{
+  return m_omx_decoder->ClearPicture(pDvdVideoPicture);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 bool CDVDVideoCodecOpenMax::bitstream_convert_init(void *in_extradata, int in_extrasize)

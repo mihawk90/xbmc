@@ -4,7 +4,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
  */
 
 #include "XMemUtils.h"
+#include "Util.h"
 
 #if defined(TARGET_DARWIN)
 #include <mach/mach.h>
@@ -70,7 +71,7 @@ void GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
   uint64_t physmem;
   size_t len = sizeof physmem;
   int mib[2] = { CTL_HW, HW_MEMSIZE };
-  size_t miblen = sizeof(mib) / sizeof(mib[0]);
+  size_t miblen = ARRAY_SIZE(mib);
 
   // Total physical memory.
   if (sysctl(mib, miblen, &physmem, &len, NULL, 0) == 0 && len == sizeof (physmem))

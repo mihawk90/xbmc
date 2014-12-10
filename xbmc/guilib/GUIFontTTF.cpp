@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,8 @@
 #include "utils/MathUtils.h"
 #include "utils/log.h"
 #include "windowing/WindowingFactory.h"
+#include "URL.h"
+#include "filesystem/File.h"
 
 #include <math.h>
 
@@ -67,7 +69,7 @@ public:
       FT_Done_FreeType(m_library);
   }
 
-  FT_Face GetFont(const CStdString &filename, float size, float aspect)
+  FT_Face GetFont(const CStdString &filename, float size, float aspect, XUTILS::auto_buffer& memoryBuf)
   {
     // don't have it yet - create it
     if (!m_library)
@@ -81,8 +83,28 @@ public:
     FT_Face face;
 
     // ok, now load the font face
-    if (FT_New_Face( m_library, CSpecialProtocol::TranslatePath(filename).c_str(), 0, &face ))
+    CURL realFile(CSpecialProtocol::TranslatePath(filename));
+    if (realFile.GetFileName().empty())
       return NULL;
+
+    memoryBuf.clear();
+#ifndef TARGET_WINDOWS
+    if (!realFile.GetProtocol().empty())
+#endif // ! TARGET_WINDOWS
+    {
+      // load file into memory if it is not on local drive
+      // in case of win32: always load file into memory as filename is in UTF-8,
+      //                   but freetype expect filename in ANSI encoding
+      XFILE::CFile f;
+      if (f.LoadFile(realFile, memoryBuf) <= 0)
+        return NULL;
+      if (FT_New_Memory_Face(m_library, (const FT_Byte*)memoryBuf.get(), memoryBuf.size(), 0, &face) != 0)
+        return NULL;
+    }
+#ifndef TARGET_WINDOWS
+    else if (FT_New_Face( m_library, realFile.GetFileName().c_str(), 0, &face ))
+      return NULL;
+#endif // ! TARGET_WINDOWS
 
     unsigned int ydpi = 72; // 72 points to the inch is the freetype default
     unsigned int xdpi = (unsigned int)MathUtils::round_int(ydpi * aspect);
@@ -112,13 +134,13 @@ public:
     return stroker;
   };
 
-  void ReleaseFont(FT_Face face)
+  static void ReleaseFont(FT_Face face)
   {
     assert(face);
     FT_Done_Face(face);
   };
   
-  void ReleaseStroker(FT_Stroker stroker)
+  static void ReleaseStroker(FT_Stroker stroker)
   {
     assert(stroker);
     FT_Stroker_Done(stroker);
@@ -138,7 +160,6 @@ CGUIFontTTFBase::CGUIFontTTFBase(const CStdString& strFileName)
   m_maxChars = 0;
   m_nestedBeginCount = 0;
 
-  m_bTextureLoaded = false;
   m_vertex_size   = 4*1024;
   m_vertex        = (SVertex*)malloc(m_vertex_size * sizeof(SVertex));
 
@@ -219,13 +240,16 @@ void CGUIFontTTFBase::Clear()
   free(m_vertex);
   m_vertex = NULL;
   m_vertex_count = 0;
+
+  m_strFileName.clear();
+  m_fontFileInMemory.clear();
 }
 
 bool CGUIFontTTFBase::Load(const CStdString& strFilename, float height, float aspect, float lineSpacing, bool border)
 {
   // we now know that this object is unique - only the GUIFont objects are non-unique, so no need
   // for reference tracking these fonts
-  m_face = g_freeTypeLibrary.GetFont(strFilename, height, aspect);
+  m_face = g_freeTypeLibrary.GetFont(strFilename, height, aspect, m_fontFileInMemory);
 
   if (!m_face)
     return false;
@@ -296,6 +320,7 @@ bool CGUIFontTTFBase::Load(const CStdString& strFilename, float height, float as
 
   if (m_textureWidth > g_Windowing.GetMaxTextureSize())
     m_textureWidth = g_Windowing.GetMaxTextureSize();
+  m_textureScaleX = 1.0f / m_textureWidth;
 
   // set the posX and posY so that our texture will be created on first character write.
   m_posX = m_textureWidth;
@@ -352,7 +377,7 @@ void CGUIFontTTFBase::DrawTextInternal(float x, float y, const vecColors &colors
     // first compute the size of the text to render in both characters and pixels
     unsigned int lineChars = 0;
     float linePixels = 0;
-    for (vecText::const_iterator pos = text.begin(); pos != text.end(); pos++)
+    for (vecText::const_iterator pos = text.begin(); pos != text.end(); ++pos)
     {
       Character *ch = GetCharacter(*pos);
       if (ch)
@@ -366,7 +391,7 @@ void CGUIFontTTFBase::DrawTextInternal(float x, float y, const vecColors &colors
   }
   float cursorX = 0; // current position along the line
 
-  for (vecText::const_iterator pos = text.begin(); pos != text.end(); pos++)
+  for (vecText::const_iterator pos = text.begin(); pos != text.end(); ++pos)
   {
     // If starting text on a new line, determine justification effects
     // Get the current letter in the CStdString
@@ -456,7 +481,7 @@ float CGUIFontTTFBase::GetLineHeight(float lineSpacing) const
   return 0.0f;
 }
 
-unsigned int CGUIFontTTFBase::spacing_between_characters_in_texture = 1;
+const unsigned int CGUIFontTTFBase::spacing_between_characters_in_texture = 1;
 
 unsigned int CGUIFontTTFBase::GetTextureLineHeight() const
 {
@@ -485,10 +510,9 @@ CGUIFontTTFBase::Character* CGUIFontTTFBase::GetCharacter(character_t chr)
 
   int low = 0;
   int high = m_numChars - 1;
-  int mid;
   while (low <= high)
   {
-    mid = (low + high) >> 1;
+    int mid = (low + high) >> 1;
     if (ch > m_char[mid].letterAndStyle)
       low = mid + 1;
     else if (ch < m_char[mid].letterAndStyle)
@@ -523,12 +547,12 @@ CGUIFontTTFBase::Character* CGUIFontTTFBase::GetCharacter(character_t chr)
   if (nestedBeginCount) End();
   if (!CacheCharacter(letter, style, m_char + low))
   { // unable to cache character - try clearing them all out and starting over
-    CLog::Log(LOGDEBUG, "GUIFontTTF::GetCharacter: Unable to cache character.  Clearing character cache of %i characters", m_numChars);
+    CLog::Log(LOGDEBUG, "%s: Unable to cache character.  Clearing character cache of %i characters", __FUNCTION__, m_numChars);
     ClearCharacterCache();
     low = 0;
     if (!CacheCharacter(letter, style, m_char + low))
     {
-      CLog::Log(LOGERROR, "GUIFontTTF::GetCharacter: Unable to cache character (out of memory?)");
+      CLog::Log(LOGERROR, "%s: Unable to cache character (out of memory?)", __FUNCTION__);
       if (nestedBeginCount) Begin();
       m_nestedBeginCount = nestedBeginCount;
       return NULL;
@@ -583,59 +607,64 @@ bool CGUIFontTTFBase::CacheCharacter(wchar_t letter, uint32_t style, Character *
   }
   FT_BitmapGlyph bitGlyph = (FT_BitmapGlyph)glyph;
   FT_Bitmap bitmap = bitGlyph->bitmap;
-  if (bitGlyph->left < 0)
-    m_posX += -bitGlyph->left;
+  bool isEmptyGlyph = (bitmap.width == 0 || bitmap.rows == 0);
 
-  // check we have enough room for the character
-  if (m_posX + bitGlyph->left + bitmap.width > (int)m_textureWidth)
-  { // no space - gotta drop to the next line (which means creating a new texture and copying it across)
-    m_posX = 0;
-    m_posY += GetTextureLineHeight();
+  if (!isEmptyGlyph)
+  {
     if (bitGlyph->left < 0)
       m_posX += -bitGlyph->left;
 
-    if(m_posY + GetTextureLineHeight() >= m_textureHeight)
-    {
-      // create the new larger texture
-      unsigned int newHeight = m_posY + GetTextureLineHeight();
-      // check for max height
-      if (newHeight > g_Windowing.GetMaxTextureSize())
-      {
-        CLog::Log(LOGDEBUG, "GUIFontTTF::CacheCharacter: New cache texture is too large (%u > %u pixels long)", newHeight, g_Windowing.GetMaxTextureSize());
-        FT_Done_Glyph(glyph);
-        return false;
-      }
+    // check we have enough room for the character
+    if (m_posX + bitGlyph->left + bitmap.width > (int)m_textureWidth)
+    { // no space - gotta drop to the next line (which means creating a new texture and copying it across)
+      m_posX = 0;
+      m_posY += GetTextureLineHeight();
+      if (bitGlyph->left < 0)
+        m_posX += -bitGlyph->left;
 
-      CBaseTexture* newTexture = NULL;
-      newTexture = ReallocTexture(newHeight);
-      if(newTexture == NULL)
+      if(m_posY + GetTextureLineHeight() >= m_textureHeight)
       {
-        FT_Done_Glyph(glyph);
-        CLog::Log(LOGDEBUG, "GUIFontTTF::CacheCharacter: Failed to allocate new texture of height %u", newHeight);
-        return false;
+        // create the new larger texture
+        unsigned int newHeight = m_posY + GetTextureLineHeight();
+        // check for max height
+        if (newHeight > g_Windowing.GetMaxTextureSize())
+        {
+          CLog::Log(LOGDEBUG, "%s: New cache texture is too large (%u > %u pixels long)", __FUNCTION__, newHeight, g_Windowing.GetMaxTextureSize());
+          FT_Done_Glyph(glyph);
+          return false;
+        }
+
+        CBaseTexture* newTexture = NULL;
+        newTexture = ReallocTexture(newHeight);
+        if(newTexture == NULL)
+        {
+          FT_Done_Glyph(glyph);
+          CLog::Log(LOGDEBUG, "%s: Failed to allocate new texture of height %u", __FUNCTION__, newHeight);
+          return false;
+        }
+        m_texture = newTexture;
       }
-      m_texture = newTexture;
+    }
+
+    if(m_texture == NULL)
+    {
+      FT_Done_Glyph(glyph);
+      CLog::Log(LOGDEBUG, "%s: no texture to cache character to", __FUNCTION__);
+      return false;
     }
   }
-
-  if(m_texture == NULL)
-  {
-    CLog::Log(LOGDEBUG, "GUIFontTTF::CacheCharacter: no texture to cache character to");
-    return false;
-  }
-
   // set the character in our table
   ch->letterAndStyle = (style << 16) | letter;
   ch->offsetX = (short)bitGlyph->left;
   ch->offsetY = (short)m_cellBaseLine - bitGlyph->top;
-  ch->left = (float)m_posX + ch->offsetX;
-  ch->top = (float)m_posY + ch->offsetY;
+  ch->left = isEmptyGlyph ? 0 : ((float)m_posX + ch->offsetX);
+  ch->top = isEmptyGlyph ? 0 : ((float)m_posY + ch->offsetY);
   ch->right = ch->left + bitmap.width;
   ch->bottom = ch->top + bitmap.rows;
   ch->advance = (float)MathUtils::round_int( (float)m_face->glyph->advance.x / 64 );
 
   // we need only render if we actually have some pixels
-  if (bitmap.width * bitmap.rows)
+  if (!isEmptyGlyph)
   {
     // ensure our rect will stay inside the texture (it *should* but we need to be certain)
     unsigned int x1 = max(m_posX + ch->offsetX, 0);
@@ -643,12 +672,10 @@ bool CGUIFontTTFBase::CacheCharacter(wchar_t letter, uint32_t style, Character *
     unsigned int x2 = min(x1 + bitmap.width, m_textureWidth);
     unsigned int y2 = min(y1 + bitmap.rows, m_textureHeight);
     CopyCharToTexture(bitGlyph, x1, y1, x2, y2);
+  
+    m_posX += spacing_between_characters_in_texture + (unsigned short)max(ch->right - ch->left + ch->offsetX, ch->advance);
   }
-  m_posX += spacing_between_characters_in_texture + (unsigned short)max(ch->right - ch->left + ch->offsetX, ch->advance);
   m_numChars++;
-
-  m_textureScaleX = 1.0f / m_textureWidth;
-  m_textureScaleY = 1.0f / m_textureHeight;
 
   // free the glyph
   FT_Done_Glyph(glyph);
@@ -662,6 +689,10 @@ void CGUIFontTTFBase::RenderCharacter(float posX, float posY, const Character *c
   // just baseline width and height should include the descent
   const float width = ch->right - ch->left;
   const float height = ch->bottom - ch->top;
+  
+  // return early if nothing to render
+  if (width == 0 || height == 0)
+    return;
 
   // posX and posY are relative to our origin, and the textcell is offset
   // from our (posX, posY).  Plus, these are unscaled quantities compared to the underlying GUI resolution
@@ -727,8 +758,8 @@ void CGUIFontTTFBase::RenderCharacter(float posX, float posY, const Character *c
     if (!m_vertex)
     {
       free(old);
-      printf("realloc failed in CGUIFontTTF::RenderCharacter. aborting\n");
-      abort();
+      CLog::Log(LOGSEVERE, "%s: can't allocate %" PRIdS" bytes for texture", __FUNCTION__ , m_vertex_size * sizeof(SVertex));
+      return;
     }
   }
 

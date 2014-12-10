@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,17 +29,20 @@
 #include "threads/Thread.h"
 #include "settings/VideoSettings.h"
 #include "OverlayRenderer.h"
+#include <deque>
+#include "PlatformDefs.h"
 
 class CRenderCapture;
 
 namespace DXVA { class CProcessor; }
 namespace VAAPI { class CSurfaceHolder; }
-class CVDPAU;
+namespace VDPAU { class CVdpauRenderPicture; }
 struct DVDVideoPicture;
 
 #define ERRORBUFFSIZE 30
 
 class CWinRenderer;
+class CMMALRenderer;
 class CLinuxRenderer;
 class CLinuxRendererGL;
 class CLinuxRendererGLES;
@@ -96,10 +99,11 @@ public:
    *
    * @param bStop reference to stop flag of calling thread
    * @param timestamp of frame delivered with AddVideoPicture
+   * @param pts used for lateness detection
    * @param source depreciated
    * @param sync signals frame, top, or bottom field
    */
-  void FlipPage(volatile bool& bStop, double timestamp = 0.0, int source = -1, EFIELDSYNC sync = FS_NONE);
+  void FlipPage(volatile bool& bStop, double timestamp = 0.0, double pts = 0.0, int source = -1, EFIELDSYNC sync = FS_NONE);
   unsigned int PreInit();
   void UnInit();
   bool Flush();
@@ -107,7 +111,7 @@ public:
   void AddOverlay(CDVDOverlay* o, double pts)
   {
     CSharedLock lock(m_sharedSection);
-    m_overlays.AddOverlay(o, pts, (m_QueueOutput + 1) % m_QueueSize);
+    m_overlays.AddOverlay(o, pts, m_free.front());
   }
 
   void AddCleanup(OVERLAY::COverlay* o)
@@ -135,7 +139,7 @@ public:
   static double GetPresentTime();
   void  WaitPresentTime(double presenttime);
 
-  CStdString GetVSyncState();
+  std::string GetVSyncState();
 
   void UpdateResolution();
 
@@ -143,6 +147,8 @@ public:
 
 #ifdef HAS_GL
   CLinuxRendererGL    *m_pRenderer;
+#elif defined(HAS_MMAL)
+  CMMALRenderer       *m_pRenderer;
 #elif HAS_GLES == 2
   CLinuxRendererGLES  *m_pRenderer;
 #elif defined(HAS_DX)
@@ -151,7 +157,7 @@ public:
   CLinuxRenderer      *m_pRenderer;
 #endif
 
-  unsigned int GetProcessorSize();
+  unsigned int GetOptimalBufferSize();
 
   // Supported pixel formats, can be called before configure
   std::vector<ERenderFormat> SupportedFormats();
@@ -174,6 +180,12 @@ public:
   int WaitForBuffer(volatile bool& bStop, int timeout = 100);
 
   /**
+   * Can be called by player for lateness detection. This is done best by
+   * looking at the end of the queue.
+   */
+  bool GetStats(double &sleeptime, double &pts, int &bufferLevel);
+
+  /**
    * Video player call this on flush in oder to discard any queued frames
    */
   void DiscardBuffer();
@@ -184,8 +196,6 @@ protected:
   void PresentFields(bool clear, DWORD flags, DWORD alpha);
   void PresentBlend(bool clear, DWORD flags, DWORD alpha);
 
-  int  GetNextRender();
-  int  GetNextDecode();
   void PrepareNextRender();
 
   EINTERLACEMETHOD AutoInterlaceMethodInternal(EINTERLACEMETHOD mInt);
@@ -212,44 +222,40 @@ protected:
     PRESENT_METHOD_BLEND,
     PRESENT_METHOD_WEAVE,
     PRESENT_METHOD_BOB,
-    PRESENT_METHOD_BYPASS,
   };
 
   double m_displayLatency;
   void UpdateDisplayLatency();
 
-  // Render Buffer State Description:
-  //
-  // Output:      is the buffer about to or having its texture prepared for render (ie from output thread).
-  //              Cannot go past the "Displayed" buffer (otherwise we will probably overwrite buffers not yet
-  //              displayed or even rendered).
-  // Render:      is the current buffer being or having been submitted for render to back buffer.
-  //              Cannot go past "Output" buffer (else it would be rendering old output).
-
-  int m_QueueRender;
-  int m_QueueOutput;
   int m_QueueSize;
   int m_QueueSkip;
 
-  struct
+  struct SPresent
   {
+    double         pts;
     double         timestamp;
     EFIELDSYNC     presentfield;
     EPRESENTMETHOD presentmethod;
   } m_Queue[NUM_BUFFERS];
 
-  double     m_presenttime;
+  std::deque<int> m_free;
+  std::deque<int> m_queued;
+  std::deque<int> m_discard;
+
+  ERenderFormat   m_format;
+
+  double     m_sleeptime;
+  double     m_presentpts;
   double     m_presentcorr;
   double     m_presenterr;
   double     m_errorbuff[ERRORBUFFSIZE];
   int        m_errorindex;
-  EFIELDSYNC m_presentfield;
-  EPRESENTMETHOD m_presentmethod;
   EPRESENTSTEP     m_presentstep;
   int        m_presentsource;
   XbmcThreads::ConditionVariable  m_presentevent;
   CCriticalSection m_presentlock;
   CEvent     m_flushEvent;
+  double     m_clock_framefinish;
 
 
   OVERLAY::CRenderer m_overlays;
@@ -261,6 +267,9 @@ protected:
   //set to true when adding something to m_captures, set to false when m_captures is made empty
   //std::list::empty() isn't thread safe, using an extra bool will save a lock per render when no captures are requested
   bool                       m_hasCaptures; 
+
+  // temporary fix for RendererHandlesPresent after #2811
+  bool m_firstFlipPage;
 };
 
 extern CXBMCRenderManager g_renderManager;

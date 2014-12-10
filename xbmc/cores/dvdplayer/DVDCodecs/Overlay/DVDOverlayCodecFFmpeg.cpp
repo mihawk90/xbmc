@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,29 +45,27 @@ CDVDOverlayCodecFFmpeg::~CDVDOverlayCodecFFmpeg()
 
 bool CDVDOverlayCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
 {
-  if (!m_dllAvUtil.Load() || !m_dllAvCodec.Load()) return false;
-
-  m_dllAvCodec.avcodec_register_all();
-
-  AVCodec* pCodec = m_dllAvCodec.avcodec_find_decoder(hints.codec);
+  AVCodec* pCodec = avcodec_find_decoder(hints.codec);
   if (!pCodec)
   {
     CLog::Log(LOGDEBUG,"%s - Unable to find codec %d", __FUNCTION__, hints.codec);
     return false;
   }
 
-  m_pCodecContext = m_dllAvCodec.avcodec_alloc_context3(pCodec);
+  m_pCodecContext = avcodec_alloc_context3(pCodec);
   m_pCodecContext->debug_mv = 0;
   m_pCodecContext->debug = 0;
   m_pCodecContext->workaround_bugs = FF_BUG_AUTODETECT;
   m_pCodecContext->codec_tag = hints.codec_tag;
   m_pCodecContext->time_base.num = 1;
   m_pCodecContext->time_base.den = DVD_TIME_BASE;
+  m_pCodecContext->pkt_timebase.num = 1;
+  m_pCodecContext->pkt_timebase.den = DVD_TIME_BASE;
 
   if( hints.extradata && hints.extrasize > 0 )
   {
     m_pCodecContext->extradata_size = hints.extrasize;
-    m_pCodecContext->extradata = (uint8_t*)m_dllAvUtil.av_mallocz(hints.extrasize + FF_INPUT_BUFFER_PADDING_SIZE);
+    m_pCodecContext->extradata = (uint8_t*)av_mallocz(hints.extrasize + FF_INPUT_BUFFER_PADDING_SIZE);
     memcpy(m_pCodecContext->extradata, hints.extradata, hints.extrasize);
 
     // start parsing of extra data - create a copy to be safe and make it zero-terminating to avoid access violations!
@@ -108,7 +106,7 @@ bool CDVDOverlayCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &optio
     delete[] parse_extra;
   }
 
-  if (m_dllAvCodec.avcodec_open2(m_pCodecContext, pCodec, NULL) < 0)
+  if (avcodec_open2(m_pCodecContext, pCodec, NULL) < 0)
   {
     CLog::Log(LOGDEBUG,"CDVDVideoCodecFFmpeg::Open() Unable to open codec");
     return false;
@@ -121,14 +119,11 @@ void CDVDOverlayCodecFFmpeg::Dispose()
 {
   if (m_pCodecContext)
   {
-    if (m_pCodecContext->codec) m_dllAvCodec.avcodec_close(m_pCodecContext);
-    m_dllAvUtil.av_free(m_pCodecContext);
+    if (m_pCodecContext->codec) avcodec_close(m_pCodecContext);
+    av_free(m_pCodecContext);
     m_pCodecContext = NULL;
   }
   FreeSubtitle(m_Subtitle);
-
-  m_dllAvCodec.Unload();
-  m_dllAvUtil.Unload();
 }
 
 void CDVDOverlayCodecFFmpeg::FreeSubtitle(AVSubtitle& sub)
@@ -137,13 +132,13 @@ void CDVDOverlayCodecFFmpeg::FreeSubtitle(AVSubtitle& sub)
   {
     if(sub.rects[i])
     {
-      m_dllAvUtil.av_free(sub.rects[i]->pict.data[0]);
-      m_dllAvUtil.av_free(sub.rects[i]->pict.data[1]);
-      m_dllAvUtil.av_freep(&sub.rects[i]);
+      av_free(sub.rects[i]->pict.data[0]);
+      av_free(sub.rects[i]->pict.data[1]);
+      av_freep(&sub.rects[i]);
     }
   }
   if(sub.rects)
-    m_dllAvUtil.av_freep(&sub.rects);
+    av_freep(&sub.rects);
   sub.num_rects = 0;
   sub.start_display_time = 0;
   sub.end_display_time = 0;
@@ -159,17 +154,18 @@ int CDVDOverlayCodecFFmpeg::Decode(DemuxPacket *pPacket)
   FreeSubtitle(m_Subtitle);
 
   AVPacket avpkt;
-  m_dllAvCodec.av_init_packet(&avpkt);
+  av_init_packet(&avpkt);
   avpkt.data = pPacket->pData;
   avpkt.size = pPacket->iSize;
   avpkt.pts = pPacket->pts == DVD_NOPTS_VALUE ? AV_NOPTS_VALUE : (int64_t)pPacket->pts;
   avpkt.dts = pPacket->dts == DVD_NOPTS_VALUE ? AV_NOPTS_VALUE : (int64_t)pPacket->dts;
 
-  len = m_dllAvCodec.avcodec_decode_subtitle2(m_pCodecContext, &m_Subtitle, &gotsub, &avpkt);
+  len = avcodec_decode_subtitle2(m_pCodecContext, &m_Subtitle, &gotsub, &avpkt);
 
   if (len < 0)
   {
     CLog::Log(LOGERROR, "%s - avcodec_decode_subtitle returned failure", __FUNCTION__);
+    Flush();
     return OC_ERROR;
   }
 
@@ -181,7 +177,7 @@ int CDVDOverlayCodecFFmpeg::Decode(DemuxPacket *pPacket)
 
   double pts_offset = 0.0;
  
-  if (m_pCodecContext->codec_id == CODEC_ID_HDMV_PGS_SUBTITLE && m_Subtitle.format == 0) 
+  if (m_pCodecContext->codec_id == AV_CODEC_ID_HDMV_PGS_SUBTITLE && m_Subtitle.format == 0)
   {
     // for pgs subtitles the packet pts of the end_segments are wrong
     // instead use the subtitle pts to calc the offset here
@@ -214,7 +210,7 @@ void CDVDOverlayCodecFFmpeg::Flush()
   FreeSubtitle(m_Subtitle);
   m_SubtitleIndex = -1;
 
-  m_dllAvCodec.avcodec_flush_buffers(m_pCodecContext);
+  avcodec_flush_buffers(m_pCodecContext);
 }
 
 CDVDOverlay* CDVDOverlayCodecFFmpeg::GetOverlay()
@@ -240,7 +236,10 @@ CDVDOverlay* CDVDOverlayCodecFFmpeg::GetOverlay()
 
     if(m_Subtitle.rects[m_SubtitleIndex] == NULL)
       return NULL;
+
     AVSubtitleRect& rect = *m_Subtitle.rects[m_SubtitleIndex];
+    if (rect.pict.data[0] == NULL)
+      return NULL;
 
     CDVDOverlayImage* overlay = new CDVDOverlayImage();
 
@@ -255,15 +254,7 @@ CDVDOverlay* CDVDOverlayCodecFFmpeg::GetOverlay()
     overlay->y        = rect.y;
     overlay->width    = rect.w;
     overlay->height   = rect.h;
-
-#if (defined(LIBAVCODEC_FROM_FFMPEG) && LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(54,71,100)) || \
-    (defined(LIBAVCODEC_FROM_LIBAV)  && LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(54,33,0))
-    // ffmpeg commit: 1885ffb03d0af28e6bac2bcc8725fa15b93f6ac9 (Nov 3 2012)
-    //       release: 1.1 (Jan 7 2013)
-    // libav  commit: 85f67c4865d8014ded2aaa64b3cba6e2970342d7 (Oct 20 2012)
-    //       release: v9 (Jan 5 2013)
     overlay->bForced  = rect.flags != 0;
-#endif
 
     int right  = overlay->x + overlay->width;
     int bottom = overlay->y + overlay->height;
@@ -315,9 +306,9 @@ CDVDOverlay* CDVDOverlayCodecFFmpeg::GetOverlay()
     for(int i=0;i<rect.nb_colors;i++)
       overlay->palette[i] = Endian_SwapLE32(((uint32_t *)rect.pict.data[1])[i]);
 
-    m_dllAvUtil.av_free(rect.pict.data[0]);
-    m_dllAvUtil.av_free(rect.pict.data[1]);
-    m_dllAvUtil.av_freep(&m_Subtitle.rects[m_SubtitleIndex]);
+    av_free(rect.pict.data[0]);
+    av_free(rect.pict.data[1]);
+    av_freep(&m_Subtitle.rects[m_SubtitleIndex]);
     m_SubtitleIndex++;
 
     return overlay;

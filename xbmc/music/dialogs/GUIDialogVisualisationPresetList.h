@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@ public:
 
 protected:
   virtual void OnInitWindow();
+  virtual void OnDeinitWindow(int nextWindowID);
   void SetVisualisation(ADDON::CVisualisation *addon);
   void Update();
   ADDON::CVisualisation* m_viz; //TODO get rid

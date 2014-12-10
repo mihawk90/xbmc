@@ -1,7 +1,7 @@
 #pragma once
 /*
  *      Copyright (C) 2012-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,8 +20,7 @@
  */
 
 #include "IHTTPRequestHandler.h"
-
-#include "utils/StdString.h"
+#include <string>
 
 class CHTTPImageHandler : public IHTTPRequestHandler
 {
@@ -37,5 +36,5 @@ public:
   virtual int GetPriority() const { return 2; }
 
 private:
-  CStdString m_path;
+  std::string m_path;
 };

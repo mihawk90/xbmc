@@ -2,7 +2,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -66,9 +66,11 @@ class CGUITextLayout
 public:
   CGUITextLayout(CGUIFont *font, bool wrap, float fHeight=0.0f, CGUIFont *borderFont = NULL);  // this may need changing - we may just use this class to replace CLabelInfo completely
 
+  bool UpdateScrollinfo(CScrollInfo &scrollInfo);
+
   // main function to render strings
   void Render(float x, float y, float angle, color_t color, color_t shadowColor, uint32_t alignment, float maxWidth, bool solid = false);
-  void RenderScrolling(float x, float y, float angle, color_t color, color_t shadowColor, uint32_t alignment, float maxWidth, CScrollInfo &scrollInfo);
+  void RenderScrolling(float x, float y, float angle, color_t color, color_t shadowColor, uint32_t alignment, float maxWidth, const CScrollInfo &scrollInfo);
   void RenderOutline(float x, float y, color_t color, color_t outlineColor, uint32_t alignment, float maxWidth);
 
   /*! \brief Returns the precalculated width and height of the text to be rendered (in constant time).
@@ -111,10 +113,16 @@ public:
 protected:
   void LineBreakText(const vecText &text, std::vector<CGUIString> &lines);
   void WrapText(const vecText &text, float maxWidth);
-  void BidiTransform(std::vector<CGUIString> &lines, bool forceLTRReadingOrder);
-  CStdStringW BidiFlip(const CStdStringW &text, bool forceLTRReadingOrder);
+  static void BidiTransform(std::vector<CGUIString> &lines, bool forceLTRReadingOrder);
+  static CStdStringW BidiFlip(const CStdStringW &text, bool forceLTRReadingOrder);
   void CalcTextExtent();
-
+  void UpdateCommon(const CStdStringW &text, float maxWidth, bool forceLTRReadingOrder);
+  
+  /*! \brief Returns the text, utf8 encoded
+   \return utf8 text
+   */
+  std::string GetText() const;
+  
   // our text to render
   vecColors m_colors;
   std::vector<CGUIString> m_lines;
@@ -129,7 +137,9 @@ protected:
   // the default color (may differ from the font objects defaults)
   color_t m_textColor;
 
+  std::string m_lastUtf8Text;
   CStdStringW m_lastText;
+  bool        m_lastUpdateW; ///< true if the last string we updated was the wstring version
   float m_textWidth;
   float m_textHeight;
 private:
@@ -145,7 +155,5 @@ private:
   static void AppendToUTF32(const CStdString &utf8, character_t colStyle, vecText &utf32);
   static void AppendToUTF32(const CStdStringW &utf16, character_t colStyle, vecText &utf32);
   static void ParseText(const CStdStringW &text, uint32_t defaultStyle, color_t defaultColor, vecColors &colors, vecText &parsedText);
-
-  static void utf8ToW(const CStdString &utf8, CStdStringW &utf16);
 };
 

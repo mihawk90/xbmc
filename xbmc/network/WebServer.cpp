@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,6 +18,10 @@
  *
  */
 
+#if (defined HAVE_CONFIG_H) && (!defined TARGET_WINDOWS)
+  #include "config.h"
+#endif
+
 #include "WebServer.h"
 #ifdef HAS_WEB_SERVER
 #include "URL.h"
@@ -32,6 +36,7 @@
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
+#include <boost/make_shared.hpp>
 
 //#define WEBSERVER_DEBUG
 
@@ -51,7 +56,7 @@ using namespace std;
 using namespace JSONRPC;
 
 typedef struct {
-  CFile *file;
+  boost::shared_ptr<CFile> file;
   HttpRanges ranges;
   size_t rangeCount;
   int64_t rangesLength;
@@ -75,15 +80,21 @@ CWebServer::CWebServer()
 
 int CWebServer::FillArgumentMap(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) 
 {
+  if (cls == NULL || key == NULL)
+    return MHD_NO;
+
   map<string, string> *arguments = (map<string, string> *)cls;
-  arguments->insert(pair<string,string>(key,value));
+  arguments->insert(pair<string, string>(key, value != NULL ? value : StringUtils::Empty));
   return MHD_YES; 
 }
 
 int CWebServer::FillArgumentMultiMap(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) 
 {
+  if (cls == NULL || key == NULL)
+    return MHD_NO;
+
   multimap<string, string> *arguments = (multimap<string, string> *)cls;
-  arguments->insert(pair<string,string>(key,value));
+  arguments->insert(pair<string, string>(key, value != NULL ? value : StringUtils::Empty));
   return MHD_YES; 
 }
 
@@ -377,7 +388,7 @@ int CWebServer::CreateRedirect(struct MHD_Connection *connection, const string &
 
 int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, const string &strURL, HTTPMethod methodType, struct MHD_Response *&response, int &responseCode)
 {
-  CFile *file = new CFile();
+  boost::shared_ptr<CFile> file = boost::make_shared<CFile>();
 
 #ifdef WEBSERVER_DEBUG
   CLog::Log(LOGDEBUG, "webserver  [IN] %s", strURL.c_str());
@@ -397,12 +408,12 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
 
     // try to get the file's last modified date
     CDateTime lastModified;
-    if (!GetLastModifiedDateTime(file, lastModified))
+    if (!GetLastModifiedDateTime(file.get(), lastModified))
       lastModified.Reset();
 
     // get the MIME type for the Content-Type header
-    CStdString ext = URIUtils::GetExtension(strURL);
-    ext = ext.ToLower();
+    std::string ext = URIUtils::GetExtension(strURL);
+    StringUtils::ToLower(ext);
     string mimeType = CreateMimeTypeFromExtension(ext.c_str());
 
     if (methodType != HEAD)
@@ -410,7 +421,7 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
       int64_t firstPosition = 0;
       int64_t lastPosition = fileLength - 1;
       uint64_t totalLength = 0;
-      HttpFileDownloadContext *context = new HttpFileDownloadContext();
+      std::auto_ptr<HttpFileDownloadContext> context(new HttpFileDownloadContext());
       context->file = file;
       context->rangesLength = fileLength;
       context->contentType = mimeType;
@@ -430,6 +441,9 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
           {
             getData = false;
             response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+            if (response == NULL)
+              return MHD_NO;
+
             responseCode = MHD_HTTP_NOT_MODIFIED;
           }
         }
@@ -517,16 +531,12 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
         // create the response object
         response = MHD_create_response_from_callback(totalLength,
                                                      2048,
-                                                     &CWebServer::ContentReaderCallback, context,
+                                                     &CWebServer::ContentReaderCallback, context.get(),
                                                      &CWebServer::ContentReaderFreeCallback);
-      }
-
-      if (response == NULL)
-      {
-        file->Close();
-        delete file;
-        delete context;
-        return MHD_NO;
+        if (response == NULL)
+          return MHD_NO;
+        
+        context.release(); // ownership was passed to mhd
       }
 
       // add Content-Range header
@@ -537,16 +547,12 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
     {
       getData = false;
 
-      CStdString contentLength;
-      contentLength.Format("%" PRId64, fileLength);
+      std::string contentLength = StringUtils::Format("%" PRId64, fileLength);
 
       response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
       if (response == NULL)
-      {
-        file->Close();
-        delete file;
         return MHD_NO;
-      }
+
       AddHeader(response, "Content-Length", contentLength);
     }
 
@@ -570,17 +576,9 @@ int CWebServer::CreateFileDownloadResponse(struct MHD_Connection *connection, co
     else
       expiryTime += CDateTimeSpan(365, 0, 0, 0);
     AddHeader(response, "Expires", expiryTime.GetAsRFC1123DateTime());
-
-    // only close the CFile instance if libmicrohttpd doesn't have to grab the data of the file
-    if (!getData)
-    {
-      file->Close();
-      delete file;
-    }
   }
   else
   {
-    delete file;
     CLog::Log(LOGERROR, "WebServer: Failed to open %s", strURL.c_str());
     return SendErrorResponse(connection, MHD_HTTP_NOT_FOUND, methodType);
   }
@@ -707,8 +705,8 @@ int CWebServer::ContentReaderCallback(void *cls, size_t pos, char *buf, int max)
     context->file->Seek(context->writePosition);
 
   // read data from the file
-  unsigned int res = context->file->Read(buf, maximum);
-  if (res == 0)
+  ssize_t res = context->file->Read(buf, maximum);
+  if (res <= 0)
     return -1;
 
   // add the number of read bytes to the number of written bytes
@@ -733,20 +731,11 @@ int CWebServer::ContentReaderCallback(void *cls, size_t pos, char *buf, int max)
 void CWebServer::ContentReaderFreeCallback(void *cls)
 {
   HttpFileDownloadContext *context = (HttpFileDownloadContext *)cls;
-  if (context == NULL)
-    return;
-
-  if (context->file != NULL)
-  {
-    context->file->Close();
-    delete context->file;
-    context->file = NULL;
-  }
+  delete context;
 
 #ifdef WEBSERVER_DEBUG
   CLog::Log(LOGDEBUG, "webserver [OUT] done");
 #endif
-  delete context;
 }
 
 struct MHD_Daemon* CWebServer::StartMHD(unsigned int flags, int port)
@@ -786,7 +775,7 @@ bool CWebServer::Start(int port, const string &username, const string &password)
   if (!m_running)
   {
     int v6testSock;
-    if ((v6testSock = socket(AF_INET6, SOCK_STREAM, 0)) > 0)
+    if ((v6testSock = socket(AF_INET6, SOCK_STREAM, 0)) >= 0)
     {
       closesocket(v6testSock);
       m_daemon_ip6 = StartMHD(MHD_USE_IPv6, port);
@@ -830,7 +819,7 @@ bool CWebServer::IsStarted()
 void CWebServer::SetCredentials(const string &username, const string &password)
 {
   CSingleLock lock (m_critSection);
-  CStdString str = username + ":" + password;
+  std::string str = username + ':' + password;
 
   Base64::Encode(str.c_str(), m_Credentials64Encoded);
   m_needcredentials = !password.empty();
@@ -838,32 +827,22 @@ void CWebServer::SetCredentials(const string &username, const string &password)
 
 bool CWebServer::PrepareDownload(const char *path, CVariant &details, std::string &protocol)
 {
-  bool exists = false;
-  CFile *file = new CFile();
-  if (file->Open(path))
-  {
-    exists = true;
-    file->Close();
-  }
-
-  delete file;
-
-  if (exists)
+  if (CFile::Exists(path))
   {
     protocol = "http";
     string url;
-    CStdString strPath = path;
-    if (strPath.Left(8) == "image://" ||
-       (strPath.Left(10) == "special://" && strPath.Right(4) == ".tbn"))
+    std::string strPath = path;
+    if (StringUtils::StartsWith(strPath, "image://") ||
+       (StringUtils::StartsWith(strPath, "special://") && StringUtils::EndsWith(strPath, ".tbn")))
       url = "image/";
     else
       url = "vfs/";
-    CURL::Encode(strPath);
-    url += strPath;
+    url += CURL::Encode(strPath);
     details["path"] = url;
+    return true;
   }
 
-  return exists;
+  return false;
 }
 
 bool CWebServer::Download(const char *path, CVariant &result)
@@ -974,7 +953,7 @@ int64_t CWebServer::ParseRangeHeader(const std::string &rangeHeaderValue, int64_
   firstPosition = 0;
   lastPosition = totalLength - 1;
 
-  if (rangeHeaderValue.empty() || !StringUtils::StartsWith(rangeHeaderValue, "bytes="))
+  if (rangeHeaderValue.empty() || !StringUtils::StartsWithNoCase(rangeHeaderValue, "bytes="))
     return totalLength;
 
   int64_t rangesLength = 0;
@@ -1073,7 +1052,13 @@ bool CWebServer::GetLastModifiedDateTime(XFILE::CFile *file, CDateTime &lastModi
   if (file->Stat(&statBuffer) != 0)
     return false;
 
-  struct tm *time = localtime((time_t *)&statBuffer.st_mtime);
+  struct tm *time;
+#ifdef HAVE_LOCALTIME_R
+  struct tm result = {};
+  time = localtime_r((time_t*)&statBuffer.st_mtime, &result);
+#else
+  time = localtime((time_t *)&statBuffer.st_mtime);
+#endif
   if (time == NULL)
     return false;
 

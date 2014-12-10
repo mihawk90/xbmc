@@ -1,23 +1,22 @@
 /*
-*      Copyright (C) 2005-2012 Team XBMC
-*      http://www.xbmc.org
-*
-*  This Program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2, or (at your option)
-*  any later version.
-*
-*  This Program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with XBMC; see the file COPYING.  If not, write to
-*  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
-*  http://www.gnu.org/copyleft/gpl.html
-*
-*/
+ *      Copyright (C) 2005-2013 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "system.h"
 
@@ -52,7 +51,10 @@ bool CDAVFile::Execute(const CURL& url)
 
   ASSERT(!(!m_state->m_easyHandle ^ !m_state->m_multiHandle));
   if( m_state->m_easyHandle == NULL )
-    g_curlInterface.easy_aquire(url2.GetProtocol(), url2.GetHostName(), &m_state->m_easyHandle, &m_state->m_multiHandle );
+    g_curlInterface.easy_aquire(url2.GetProtocol().c_str(),
+                                url2.GetHostName().c_str(),
+                                &m_state->m_easyHandle,
+                                &m_state->m_multiHandle);
 
   // setup common curl options
   SetCommonOptions(m_state);
@@ -68,11 +70,11 @@ bool CDAVFile::Execute(const CURL& url)
 
   if (lastResponseCode == 207)
   {
-    CStdString strResponse;
+    std::string strResponse;
     ReadData(strResponse);
 
     CXBMCTinyXML davResponse;
-    davResponse.Parse(strResponse.c_str());
+    davResponse.Parse(strResponse);
 
     if (!davResponse.Parse(strResponse))
     {
@@ -87,7 +89,7 @@ bool CDAVFile::Execute(const CURL& url)
     {
       if (CDAVCommon::ValueWithoutNamespace(pChild, "response"))
       {
-        CStdString sRetCode = CDAVCommon::GetStatusTag(pChild->ToElement());
+        std::string sRetCode = CDAVCommon::GetStatusTag(pChild->ToElement());
         CRegExp rxCode;
         rxCode.RegComp("HTTP/1\\.1\\s(\\d+)\\s.*"); 
         if (rxCode.RegFind(sRetCode) >= 0)
@@ -113,7 +115,7 @@ bool CDAVFile::Delete(const CURL& url)
     return false;
 
   CDAVFile dav;
-  CStdString strRequest = "DELETE";
+  std::string strRequest = "DELETE";
 
   dav.SetCustomRequest(strRequest);
  
@@ -136,10 +138,10 @@ bool CDAVFile::Rename(const CURL& url, const CURL& urlnew)
   CDAVFile dav;
 
   CURL url2(urlnew);
-  CStdString strProtocol = url2.GetTranslatedProtocol();
+  std::string strProtocol = url2.GetTranslatedProtocol();
   url2.SetProtocol(strProtocol);
 
-  CStdString strRequest = "MOVE";
+  std::string strRequest = "MOVE";
   dav.SetCustomRequest(strRequest);
   dav.SetRequestHeader("Destination", url2.GetWithoutUserDetails());
 

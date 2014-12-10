@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include "MediaSettings.h"
 #include "Application.h"
+#include "PlayListPlayer.h"
 #include "Util.h"
 #include "dialogs/GUIDialogContextMenu.h"
 #include "dialogs/GUIDialogFileBrowser.h"
@@ -30,7 +31,7 @@
 #include "interfaces/Builtins.h"
 #include "music/MusicDatabase.h"
 #include "profiles/ProfilesManager.h"
-#include "settings/Setting.h"
+#include "settings/lib/Setting.h"
 #include "storage/MediaManager.h"
 #include "threads/SingleLock.h"
 #include "utils/log.h"
@@ -56,7 +57,7 @@ CMediaSettings::CMediaSettings()
   m_additionalSubtitleDirectoryChecked = 0;
 
   m_musicNeedsUpdate = 0;
-  m_musicNeedsUpdate = 0;
+  m_videoNeedsUpdate = 0;
 }
 
 CMediaSettings::~CMediaSettings()
@@ -129,6 +130,8 @@ bool CMediaSettings::Load(const TiXmlNode *settings)
       m_defaultVideoSettings.m_SubtitleDelay = 0.0f;
     XMLUtils::GetBoolean(pElement, "autocrop", m_defaultVideoSettings.m_Crop);
     XMLUtils::GetBoolean(pElement, "nonlinstretch", m_defaultVideoSettings.m_CustomNonLinStretch);
+    if (!XMLUtils::GetInt(pElement, "stereomode", m_defaultVideoSettings.m_StereoMode))
+      m_defaultVideoSettings.m_StereoMode = 0;
 
     m_defaultVideoSettings.m_SubtitleCached = false;
   }
@@ -172,6 +175,14 @@ bool CMediaSettings::Load(const TiXmlNode *settings)
   return true;
 }
 
+void CMediaSettings::OnSettingsLoaded()
+{
+  g_playlistPlayer.SetRepeat(PLAYLIST_MUSIC, m_musicPlaylistRepeat ? PLAYLIST::REPEAT_ALL : PLAYLIST::REPEAT_NONE);
+  g_playlistPlayer.SetShuffle(PLAYLIST_MUSIC, m_musicPlaylistShuffle);
+  g_playlistPlayer.SetRepeat(PLAYLIST_VIDEO, m_videoPlaylistRepeat ? PLAYLIST::REPEAT_ALL : PLAYLIST::REPEAT_NONE);
+  g_playlistPlayer.SetShuffle(PLAYLIST_VIDEO, m_videoPlaylistShuffle);
+}
+
 bool CMediaSettings::Save(TiXmlNode *settings) const
 {
   if (settings == NULL)
@@ -204,6 +215,7 @@ bool CMediaSettings::Save(TiXmlNode *settings) const
   XMLUtils::SetFloat(pNode, "subtitledelay", m_defaultVideoSettings.m_SubtitleDelay);
   XMLUtils::SetBoolean(pNode, "autocrop", m_defaultVideoSettings.m_Crop); 
   XMLUtils::SetBoolean(pNode, "nonlinstretch", m_defaultVideoSettings.m_CustomNonLinStretch);
+  XMLUtils::SetInt(pNode, "stereomode", m_defaultVideoSettings.m_StereoMode);
 
   // mymusic
   pNode = settings->FirstChild("mymusic");
@@ -302,9 +314,8 @@ void CMediaSettings::OnSettingAction(const CSetting *setting)
   }
   else if (settingId == "musiclibrary.cleanup")
   {
-    CMusicDatabase musicdatabase;
-    musicdatabase.Clean();
-    CUtil::DeleteMusicDatabaseDirectoryCache();
+    if (CGUIDialogYesNo::ShowAndGetInput(313, 333, 0, 0))
+      g_application.StartMusicCleanup(true);
   }
   else if (settingId == "musiclibrary.export")
     CBuiltins::Execute("exportlibrary(music)");
@@ -324,7 +335,7 @@ void CMediaSettings::OnSettingAction(const CSetting *setting)
   else if (settingId == "videolibrary.cleanup")
   {
     if (CGUIDialogYesNo::ShowAndGetInput(313, 333, 0, 0))
-      g_application.StartVideoCleanup();
+      g_application.StartVideoCleanup(true);
   }
   else if (settingId == "videolibrary.export")
     CBuiltins::Execute("exportlibrary(video)");

@@ -1,6 +1,6 @@
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -97,6 +97,9 @@ void CThread::SetThreadInfo()
   else
     userMaxPrio = 0;
 
+  if (geteuid() == 0)
+    userMaxPrio = GetMaxPriority();
+
   // if the user does not have an entry in limits.conf the following
   // call will fail
   if (userMaxPrio > 0)
@@ -168,6 +171,9 @@ bool CThread::SetPriority(const int iPriority)
     }
     else
       userMaxPrio = 0;
+
+    if (geteuid() == 0)
+      userMaxPrio = GetMaxPriority();
 
     // keep priority in bounds
     int prio = iPriority;

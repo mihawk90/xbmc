@@ -3,7 +3,7 @@
 
 /*
  *      Copyright (C) 2005-2013 Team XBMC
- *      http://www.xbmc.org
+ *      http://xbmc.org
  *
  *  This Program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ void tracker_dll_free(DllLoader* pDll);
 void tracker_dll_set_addr(DllLoader* pDll, uintptr_t min, uintptr_t max);
 
 // returns the name from the dll that contains this addres or "" if not found
-char* tracker_getdllname(uintptr_t caller);
+const char* tracker_getdllname(uintptr_t caller);
 
 // returns a function pointer if there is one available for it, or NULL if not ofund
 void* tracker_dll_get_function(DllLoader* pDll, char* sFunctionName);
